@@ -1,0 +1,727 @@
+<!-- [稼働Ver 1.0.0 作業版 Rev.29] 独立全画面ガイドオーバーレイ対応・読み上げ広大化レイアウト同期 -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoiceSuite Studio - 音声入出力統合モジュール</title>
+  <link rel="stylesheet" href="voice-suite.css">
+  <style>
+    /* デモ画面用の補助スタイル */
+    .vs-demo-badge {
+      display: inline-block;
+      font-size: 11px;
+      color: #a5b4fc;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: 8px;
+      font-weight: 500;
+    }
+    .vs-diag-result {
+      font-size: 12px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-top: 8px;
+      line-height: 1.5;
+      display: none;
+    }
+    .vs-diag-result.success {
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid rgba(16, 185, 129, 0.45);
+      color: #6ee7b7;
+    }
+    .vs-diag-result.error {
+      background: rgba(239, 68, 68, 0.18);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      color: #fca5a5;
+    }
+  </style>
+</head>
+<body class="vs-app-body">
+
+  <div class="vs-container">
+    <!-- ヘッダー -->
+    <header class="vs-header">
+      <div class="vs-header-left">
+        <div>
+          <span class="vs-badge">VoiceSuite Studio v1.0.0</span>
+          <h1 class="vs-title">共通音声入出力統合モジュール</h1>
+          <p class="vs-subtitle">左広々ワイド読み上げスタジオ（約70%） ＆ 右460px快適AI音声入力・先読み逐次再生・完全汎用文脈読み分け</p>
+        </div>
+      </div>
+      <div class="vs-header-actions">
+        <button id="openGuideBtn" class="vs-btn vs-btn-sm vs-btn-primary" title="システム説明ガイド・操作マニュアルを表示">📖 ガイド</button>
+        <button id="openConfigBtn" class="vs-btn-icon" title="API・環境設定">⚙️</button>
+      </div>
+    </header>
+
+    <!-- メイン2ペインレイアウト（スタジオ画面：左広大 vs-pane-synth / 右固定460px vs-pane-input） -->
+    <main id="mainStudioView" class="vs-grid">
+
+      <!-- 左ペイン：音声合成 ＆ 原稿表記100%維持・完全汎用多音字文脈読み分け・優雅着地スクロール -->
+      <section class="vs-card vs-pane-synth">
+        <div class="vs-card-header">
+          <div class="vs-card-title-group">
+            <div class="vs-card-icon">🔊</div>
+            <div>
+              <h2 class="vs-card-title">音声読み上げ・評価スタジオ</h2>
+              <p class="vs-card-desc">原稿表記100%維持 ＆ スタートバッファリング・自律型多音字文脈判定</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 上部：話者選択 ＆ 話速スピード（広々と綺麗に並ぶグリッド） -->
+        <div class="vs-synth-top-row">
+          <div class="vs-control-box">
+            <label class="vs-control-label" for="voiceSelect">話者</label>
+            <select id="voiceSelect" class="vs-select-unified">
+              <!-- JSで動的に初期化 -->
+            </select>
+          </div>
+
+          <div class="vs-control-box">
+            <div class="vs-speed-unified-label">
+              <span class="vs-control-label">話速</span>
+              <span id="speedValText" class="vs-speed-badge">1.0x (標準)</span>
+            </div>
+            <input type="range" id="speedSlider" class="vs-range-slider-unified" min="0.7" max="1.8" step="0.1" value="1.0">
+          </div>
+        </div>
+
+        <!-- 【上部配置】読み上げ追従モニター（原稿英字・漢字100%維持 ＆ ピル型ステータスバッジ） -->
+        <div class="vs-field-group">
+          <div class="vs-track-header-row">
+            <label class="vs-label" style="color: #facc15;">📖 読み上げ追従モニター（テレプロンプタースクロール）</label>
+            
+            <!-- ピル型ステータスバッジ -->
+            <div id="ttsStatusBadge" class="vs-status-badge">
+              <span class="vs-badge-dot"></span>
+              <span id="ttsStatusText" class="vs-badge-text">待機中</span>
+            </div>
+          </div>
+
+          <!-- 追従モニター（自然な行間・改行維持・頭上スペース着地） -->
+          <div id="readTrackContainer" class="vs-read-track-container">
+            <span style="color: #64748b; font-size: 12px;">読み上げを開始すると、原稿の英字・漢字表記のまま黄色く発光し、下から約2.5行目に達すると上部にゆったりとしたスペースを残して滑らかに着地スクロールします...</span>
+          </div>
+        </div>
+
+        <!-- 【下部配置】左右2カラム（左: 広大な原稿テキストエリア、右: 200px操作パネルで一時停止1行収容） -->
+        <div class="vs-synth-lower-grid">
+          
+          <!-- 左カラム：広大な原稿テキストエリア -->
+          <div class="vs-field-group" style="margin-top: 0;">
+            <div class="vs-field-header">
+              <label class="vs-label" for="synthTextArea">読み上げ原稿テキスト</label>
+              <span id="charCounter" class="vs-char-count">0 文字</span>
+            </div>
+            <textarea id="synthTextArea" class="vs-synth-textarea" placeholder="読み上げさせたい文章を入力してください（AI Studioなどの英字や「金」「奴」「一日」なども文脈に応じて正しく発音され、モニター上の表記は崩れません）..."></textarea>
+          </div>
+
+          <!-- 右カラム：操作ボタン群（一時停止が1行で完全に収まる） -->
+          <div class="vs-synth-control-panel">
+            
+            <!-- 主操作系グループ -->
+            <div class="vs-btn-group-primary">
+              <button id="playBtn" class="vs-btn vs-btn-primary vs-btn-main-play">
+                ▶️ 読み上げ開始
+              </button>
+              <div class="vs-btn-sub-row">
+                <button id="pauseBtn" class="vs-btn vs-btn-sub">
+                  ⏸️ 一時停止
+                </button>
+                <button id="stopBtn" class="vs-btn vs-btn-danger vs-btn-sub">
+                  ⏹️ 停止
+                </button>
+              </div>
+            </div>
+
+            <!-- 補助・ツール系グループ -->
+            <div class="vs-btn-group-secondary">
+              <button id="insertAozoraSampleBtn" class="vs-btn vs-btn-tool">
+                📚 青空文庫サンプル
+              </button>
+              <button id="insertSampleTextBtn" class="vs-btn vs-btn-tool">
+                📝 400文字サンプル
+              </button>
+              <button id="clearSynthBtn" class="vs-btn vs-btn-tool">
+                クリア
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      <!-- 右ペイン：音声入力 ＆ 2モード切替 ＆ カーソルインライン追記 ＆ ボタン直下AIステータス -->
+      <section class="vs-card vs-pane-input">
+        <div class="vs-card-header">
+          <div class="vs-card-title-group">
+            <div class="vs-card-icon">🎙️</div>
+            <div>
+              <h2 class="vs-card-title">音声入力・AI自動整形</h2>
+              <p class="vs-card-desc">カーソル位置にインライン追記（前の文章は消えません）。リアルタイム録音タイマー搭載</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 音声入力モード切り替えボタングループ -->
+        <div class="vs-mode-selector-card">
+          <div class="vs-mode-label-row">
+            <span class="vs-control-label">整形モード選択</span>
+            <span class="vs-mode-desc-text">停止ボタン押下時のAI整形スタイルを選択できます</span>
+          </div>
+          <div class="vs-mode-btn-group">
+            <button id="modeBtnA" class="vs-mode-btn active" type="button">
+              <div class="vs-mode-btn-header">
+                <span class="vs-mode-name">【A】原文忠実モード</span>
+                <span class="vs-mode-chip">推奨</span>
+              </div>
+              <div class="vs-mode-keywords">発言・口調完全保持 / 言い淀み除去 / ニュアンス重視</div>
+            </button>
+            <button id="modeBtnB" class="vs-mode-btn" type="button">
+              <div class="vs-mode-btn-header">
+                <span class="vs-mode-name">【B】AI Studioスマート</span>
+              </div>
+              <div class="vs-mode-keywords">複文分割 / 重複述語排除 / 知的ドキュメント風</div>
+            </button>
+          </div>
+        </div>
+
+        <div class="vs-stt-center">
+          <div class="vs-stt-control-row">
+            <div class="vs-mic-button-wrapper">
+              <button id="recordBtn" class="vs-mic-btn" title="マイクをクリックして録音開始/停止">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                </svg>
+              </button>
+              <div class="vs-pulse-ring"></div>
+            </div>
+
+            <!-- 音声入力専用：完全な真円（丸）の赤色音圧バー -->
+            <div id="inputBarsContainer" class="vs-input-pill-wave" title="声の大きさに応じて丸い赤ドットが上下に滑らかに伸び縮みします">
+              <div class="vs-input-dot-bar"></div>
+              <div class="vs-input-dot-bar"></div>
+              <div class="vs-input-dot-bar"></div>
+              <div class="vs-input-dot-bar"></div>
+              <div class="vs-input-dot-bar"></div>
+              <div class="vs-input-dot-bar"></div>
+            </div>
+          </div>
+
+          <div id="recordStatus" class="vs-recording-status">
+            <span class="vs-status-dot"></span> 待機中（マイクを押して発話）
+          </div>
+        </div>
+
+        <!-- 認識・整形結果テキストエリア -->
+        <div class="vs-field-group vs-input-field-stretch">
+          <div class="vs-field-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label class="vs-label" for="inputTextArea">認識・整形結果テキスト</label>
+              <span class="vs-demo-badge">Gemini-3.5-flash-lite 連動</span>
+            </div>
+            <span id="inputCharCounter" class="vs-char-count">0 文字</span>
+          </div>
+          <textarea id="inputTextArea" class="vs-input-textarea" placeholder="マイクに向かって話しかけてください。話した言葉が途中で消えることなく累積され、途中でカーソルを置いた位置にピンポイントで言い忘れたテキストをインライン挿入できます..."></textarea>
+        </div>
+
+        <div class="vs-btn-row">
+          <button id="copyToSynthBtn" class="vs-btn vs-btn-primary">
+            ⬅️ 読み上げエリアにコピー
+          </button>
+          <button id="clearInputBtn" class="vs-btn">
+            クリア
+          </button>
+        </div>
+
+        <!-- ボタンのすぐ下に配置した目線の近いAIステータス枠 -->
+        <div id="inputAiStatus" class="vs-input-ai-status"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- 完全独立別画面：システム説明ガイド ＆ 操作マニュアル（全画面独立オーバーレイビュー・初期非表示） -->
+  <section id="guideView" class="vs-guide-view" hidden>
+    <div class="vs-guide-inner-container">
+      <div class="vs-guide-header">
+        <h2 class="vs-guide-title">📖 VoiceSuite Studio システム説明ガイド ＆ 操作マニュアル</h2>
+        <button id="backToStudioBtn" class="vs-btn vs-btn-primary">⬅️ スタジオに戻る</button>
+      </div>
+
+      <div class="vs-guide-scroll-body">
+        <div class="vs-guide-content">
+          
+          <!-- セクション1: ツールの目的と狙い -->
+          <section class="vs-guide-section">
+            <h3 class="vs-guide-heading">🎯 1. 本ツールの目的・狙い</h3>
+            <p style="color: #cbd5e1; font-size: 13px; margin: 0;">
+              本システムは、<strong>「実用性の極めて高い音声入力」</strong> と <strong>「長文でも途切れない高品質な音声読み上げ」</strong> を1つの画面に統合し、かつ業務システムや別アプリケーションへ<strong>パーツ単位でそのまま移植・再利用できるように設計された共通音声入出力基盤</strong>です。
+            </p>
+
+            <div class="vs-guide-card-grid">
+              <div class="vs-guide-box">
+                <div class="vs-guide-box-header">
+                  <span>🎙️</span>
+                  <span>音声入力の革新アプローチ</span>
+                </div>
+                <p style="font-size: 12px; color: #94a3b8; margin: 0;">
+                  従来の音声認識は「息継ぎで前の文章が消える」「改行のない巨大な文章の塊になる」課題がありました。本ツールでは<strong>前の文章を消さずに累積保持</strong>し、カーソル位置への<strong>インライン挿入</strong>とGeminiによる2種類の整形スタイルを提供します。
+                </p>
+              </div>
+
+              <div class="vs-guide-box">
+                <div class="vs-guide-box-header">
+                  <span>🔊</span>
+                  <span>音声読み上げの革新アプローチ</span>
+                </div>
+                <p style="font-size: 12px; color: #94a3b8; margin: 0;">
+                  高品質音声合成の「長文で待たされる」「多音字の誤読が多い」課題を解決。<strong>先読み逐次再生（スタートバッファリング）</strong>により待たずに即時再生を開始。原稿の英字や漢字は100%維持したまま、<strong>5大文法カテゴリー自律判定</strong>で発音のみを完璧に最適化します。
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <!-- セクション2: パターンA vs パターンB 徹底解説 -->
+          <section class="vs-guide-section">
+            <h3 class="vs-guide-heading">⚖️ 2. 音声入力 整形モードの違い（パターンA vs パターンB）</h3>
+            <p style="color: #cbd5e1; font-size: 13px; margin: 0;">
+              話者の用途に合わせて、Geminiが文章の整形スタイルを劇的に切り替えます。
+            </p>
+
+            <div class="vs-guide-compare-box">
+              <div class="vs-compare-item pattern-a">
+                <div class="vs-compare-title" style="color: #6ee7b7;">
+                  <span>【A】原文忠実モード（推奨）</span>
+                  <span style="font-size: 10px; background: rgba(16, 185, 129, 0.2); padding: 2px 6px; border-radius: 4px;">口調・熱量保持</span>
+                </div>
+                <p style="color: #cbd5e1; margin: 0 0 6px 0;">
+                  話者の選んだ語彙・語尾（「〜だと思う」「〜なんですけどね」等）を<strong>1文字も変えずに100%保持</strong>します。単なる言い淀みフィラー（えーと、あの等）のみを削除し、接続詞で単一改行を入れて読みやすくします。
+                </p>
+                <div style="font-size: 11px; color: #94a3b8;">▼ 変換イメージ</div>
+                <div class="vs-code-snippet">「明日のミーティングなんですけれども、ちょっと準備が遅れてまして、時間を1時間ズラせますでしょうか。」</div>
+              </div>
+
+              <div class="vs-compare-item pattern-b">
+                <div class="vs-compare-title" style="color: #a5b4fc;">
+                  <span>【B】AI Studioスマートモード</span>
+                  <span style="font-size: 10px; background: rgba(99, 102, 241, 0.2); padding: 2px 6px; border-radius: 4px;">複文分割・重複排除</span>
+                </div>
+                <p style="color: #cbd5e1; margin: 0 0 6px 0;">
+                  話した内容は100%保持したまま、「〜ですが、〜だったので、〜ですけど」と長く続く文を<strong>適切な「。」で分割</strong>。同じ意味の堂々巡りや重複を整理し、<strong>ビジネスチャットやドキュメントにそのまま使える洗練された文章</strong>へ昇華します。
+                </p>
+                <div style="font-size: 11px; color: #94a3b8;">▼ 変換イメージ</div>
+                <div class="vs-code-snippet">「明日のミーティングについてご相談です。資料準備に遅れが生じるため、開始時間を1時間遅らせていただくことは可能でしょうか。」</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- セクション3: 各部・ボタン機能説明 -->
+          <section class="vs-guide-section">
+            <h3 class="vs-guide-heading">🎛️ 3. 画面レイアウト構成 ＆ 各部・ボタン機能説明</h3>
+            
+            <table class="vs-guide-table">
+              <thead>
+                <tr>
+                  <th style="width: 140px;">エリア</th>
+                  <th style="width: 170px;">UI要素・ボタン</th>
+                  <th>機能説明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td rowspan="6"><strong>左ペイン<br>読み上げスタジオ<br>(広大 約70%)</strong></td>
+                  <td><strong>話者 / 話速スライダー</strong></td>
+                  <td>ずんだもん等のVOICEVOXキャラ10種や標準音声を選択。0.7x〜1.8xの速度調整が可能です。</td>
+                </tr>
+                <tr>
+                  <td><strong>読み上げ追従モニター</strong></td>
+                  <td>発話中のフレーズが<strong>黄色く発光</strong>し、文字数と連動して下部から自動テレプロンプタースクロールします。改行・段落も崩れません。</td>
+                </tr>
+                <tr>
+                  <td><strong>ステータスバッジ</strong></td>
+                  <td>再生中（水色パルス点滅）/ 待機中 / 準備中 の状態をリアルタイム表示します。</td>
+                </tr>
+                <tr>
+                  <td><strong>▶️ 読み上げ開始</strong></td>
+                  <td>文脈解析を行い、先読みパイプラインを起動して即座に発声をスタートします。</td>
+                </tr>
+                <tr>
+                  <td><strong>⏸️ 一時停止 / ▶️ 再開</strong></td>
+                  <td>再生を一時停止します。押すと「▶️ 再開」に変わり、停止したフレーズ位置から追従を再開できます（1行収容）。</td>
+                </tr>
+                <tr>
+                  <td><strong>サンプルの挿入ボタン</strong></td>
+                  <td>「📚 青空文庫（ルビ除去・漢字維持）」や「📝 400文字（AI Studio英字表記・セリフ演技）」をワンクリック挿入できます。</td>
+                </tr>
+                <tr>
+                  <td rowspan="4"><strong>右ペイン<br>音声入力エリア<br>(460px固定)</strong></td>
+                  <td><strong>モード選択ボタン</strong></td>
+                  <td>停止時のAI整形スタイルを【A】原文忠実 または 【B】AI Studioスマート から切り替えます。</td>
+                </tr>
+                <tr>
+                  <td><strong>🎙️ マイクボタン ＆ 波形</strong></td>
+                  <td>クリックで録音開始。丸い赤ドットが音圧に応じて滑らかに伸縮し、マイク入力を視覚的に確認できます。</td>
+                </tr>
+                <tr>
+                  <td><strong>インライン追記エリア</strong></td>
+                  <td>音声が途切れず累積されます。途中にカーソルを置いて話せば、その位置にピンポイントでインライン挿入されます。</td>
+                </tr>
+                <tr>
+                  <td><strong>⬅️ 読み上げにコピー</strong></td>
+                  <td>整形されたテキストを左ペインの「読み上げ原稿テキスト」へワンクリックで転送します。</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <!-- セクション4: 操作手順・簡易マニュアル -->
+          <section class="vs-guide-section">
+            <h3 class="vs-guide-heading">🚀 4. 操作手順・簡易マニュアル</h3>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div class="vs-guide-step-card">
+                <div class="vs-step-badge">1</div>
+                <div>
+                  <strong style="color: #ffffff; font-size: 13px;">初期設定（初回のみ）</strong>
+                  <p style="color: #94a3b8; font-size: 12px; margin: 3px 0 0 0;">
+                    右上の <strong>⚙️ 設定</strong> を開き、<strong>Gemini API Key</strong> を登録します。ローカルVOICEVOXを利用する場合は「🔍 接続テスト」を押して接続成功を確認し、「保存して閉じる」をクリックします。
+                  </p>
+                </div>
+              </div>
+
+              <div class="vs-guide-step-card">
+                <div class="vs-step-badge">2</div>
+                <div>
+                  <strong style="color: #ffffff; font-size: 13px;">右ペインで音声を入力する</strong>
+                  <p style="color: #94a3b8; font-size: 12px; margin: 3px 0 0 0;">
+                    <strong>【A】原文忠実</strong> または <strong>【B】AI Studioスマート</strong> を選び、<strong>🎙️ マイクボタン</strong> を押して発話します。もう一度押すと停止し、約1〜2秒で綺麗にAI整形されます。言い忘れた言葉はカーソルを置いて追加発話できます。
+                  </p>
+                </div>
+              </div>
+
+              <div class="vs-guide-step-card">
+                <div class="vs-step-badge">3</div>
+                <div>
+                  <strong style="color: #ffffff; font-size: 13px;">左ペインで読み上げ・評価を行う</strong>
+                  <p style="color: #94a3b8; font-size: 12px; margin: 3px 0 0 0;">
+                    <strong>「⬅️ 読み上げエリアにコピー」</strong> を押して原稿を転送し、話者と話速を選んで <strong>「▶️ 読み上げ開始」</strong> をクリックします。画面の英字・漢字表記を崩さず、正しい発音でモニターが黄色く発光しながらスムーズに朗読されます。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 設定モーダル -->
+  <div id="configModalBackdrop" class="vs-modal-backdrop">
+    <div class="vs-modal">
+      <div class="vs-modal-header">
+        <h3 class="vs-modal-title">⚙️ モジュール接続・環境設定</h3>
+        <button id="closeConfigModalBtn" class="vs-modal-close">&times;</button>
+      </div>
+      <div class="vs-modal-body">
+        
+        <div>
+          <label class="vs-label" for="cfgGeminiKey">Gemini API Key（音声入力整形 ＆ 自律型文脈読み分け用）</label>
+          <input type="password" id="cfgGeminiKey" class="vs-input" placeholder="AIzaSy...">
+          <div class="vs-input-hint">gemini-3.5-flash-lite / gemini-flash-lite-latest を呼び出して高精度AI整形と自律型多音字文脈判定を行います。</div>
+        </div>
+
+        <div>
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <label class="vs-label" for="cfgVoicevoxUrl">VOICEVOX 接続先 URL</label>
+            <button id="btnTestVoicevox" class="vs-btn vs-btn-sm" style="padding: 2px 8px;">🔍 接続テスト</button>
+          </div>
+          <input type="text" id="cfgVoicevoxUrl" class="vs-input" placeholder="http://127.0.0.1:50021" style="margin-top: 4px;">
+          <div id="diagResultBox" class="vs-diag-result"></div>
+          <div class="vs-input-hint">Windowsやブラウザ環境での安定通信のため、http://127.0.0.1:50021 を推奨します。</div>
+        </div>
+
+        <div>
+          <label class="vs-label" for="cfgVoicevoxApiKey">VOICEVOX API Key（外部認証サーバー利用時）</label>
+          <input type="password" id="cfgVoicevoxApiKey" class="vs-input" placeholder="不要な場合は空欄のままにしてください">
+          <div class="vs-input-hint">ローカル版の標準VOICEVOXでは空欄で動作します。認証付きプロキシやAPI連携時に設定してください。</div>
+        </div>
+
+        <div>
+          <label class="vs-label" for="cfgVoicevoxTimeout">VOICEVOX タイムアウト（ミリ秒）</label>
+          <input type="number" id="cfgVoicevoxTimeout" class="vs-input" placeholder="10000" value="10000">
+        </div>
+
+        <!-- 単語読み替えカスタム辞書セクション -->
+        <div>
+          <label class="vs-label">単語読み替えカスタム辞書</label>
+          <div class="vs-dict-box">
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="dictWordInput" class="vs-input" placeholder="表記 (例: 固有名詞)" style="flex: 1;">
+              <input type="text" id="dictYomiInput" class="vs-input" placeholder="読み (例: よみがな)" style="flex: 1;">
+              <button id="addDictBtn" class="vs-btn vs-btn-sm vs-btn-primary">追加</button>
+            </div>
+            <div id="dictList" class="vs-dict-list"></div>
+          </div>
+          <div class="vs-input-hint">独自の専門用語や固有名詞を登録できます。一般的な日本語や多音字はAIが文脈から自動判別します。</div>
+        </div>
+
+      </div>
+      <div class="vs-modal-footer">
+        <button id="cancelConfigBtn" class="vs-btn">キャンセル</button>
+        <button id="saveConfigBtn" class="vs-btn vs-btn-primary">保存して閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- スクリプト読み込み -->
+  <script src="voice-suite.js"></script>
+  <script>
+    // 400文字の通常評価用サンプルテキスト（AI Studio英字表記・セリフ自然演技テスト用）
+    const SAMPLE_400_CHARS = `本システムは、洗練された音声認識と最新の音声合成技術をシームレスに統合した共通モジュールです。
+ずんだもんが笑顔で言いました。「ボクの声で自由に喋らせることができるのだ！すごいのだ！」
+また、大ヒットしたドラマのVIVANTのような英語固有名詞や、AI Studioのような最新ツールも、画面の表示を崩さずに正しく発音されます。
+春日部つむぎも答えます。「カギ括弧のセリフは感情豊かに、地の文は落ち着いて読み分けができるんですよ。」
+このように、高精度な音声認識と先読み逐次再生エンジンが連動し、長文でも途切れることなく快適に発話が進行します。`;
+
+    // 青空文庫ルビテスト用サンプル（芥川龍之介『羅生門』）
+    const SAMPLE_AOZORA_RUBY = `［＃３字下げ］或日《あるひ》の暮方《くれがた》の事である。一人の下人《げにん》が、羅生門《らしょうもん》の下で雨やみを待っていた。
+広い門の下には、この男のほかに誰もいない。ただ、所々｜丹塗《にぬり》の剥《は》げた、大きな円柱《まるばしら》に、蟋蟀《きりぎりす》が一匹とまっている。
+下人は、雨やみを待ちながら、行く所のない途方にくれていた。
+「どうにもならない事を、どうにかするためには、手段を選んでいる暇はない。」
+下人はついに、盗人になる決意を固めたのである。`;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. 完全独立した2つのモジュールをVoiceSuiteで統合バインド
+      const voiceSuite = new VoiceSuite({
+        inputBarsContainer: document.getElementById('inputBarsContainer'),
+        recordBtn: document.getElementById('recordBtn'),
+        recordStatus: document.getElementById('recordStatus'),
+        inputTextArea: document.getElementById('inputTextArea'),
+        inputCharCounter: document.getElementById('inputCharCounter'),
+        inputAiStatus: document.getElementById('inputAiStatus'),
+        synthTextArea: document.getElementById('synthTextArea'),
+        readTrackContainer: document.getElementById('readTrackContainer'),
+        voiceSelect: document.getElementById('voiceSelect'),
+        speedSlider: document.getElementById('speedSlider'),
+        speedValText: document.getElementById('speedValText'),
+        playBtn: document.getElementById('playBtn'),
+        pauseBtn: document.getElementById('pauseBtn'),
+        stopBtn: document.getElementById('stopBtn'),
+        copyToSynthBtn: document.getElementById('copyToSynthBtn'),
+        ttsStatusBadge: document.getElementById('ttsStatusBadge'),
+        ttsStatusText: document.getElementById('ttsStatusText'),
+        charCounter: document.getElementById('charCounter'),
+        modeBtnA: document.getElementById('modeBtnA'),
+        modeBtnB: document.getElementById('modeBtnB')
+      });
+
+      // 2. 完全独立別画面（全画面独立オーバーレイビュー）制御
+      const guideView = document.getElementById('guideView');
+      const openGuideBtn = document.getElementById('openGuideBtn');
+      const backToStudioBtn = document.getElementById('backToStudioBtn');
+
+      if (openGuideBtn && backToStudioBtn && guideView) {
+        openGuideBtn.addEventListener('click', () => {
+          guideView.hidden = false;
+          document.body.style.overflow = 'hidden'; // 背景スクロールのロック
+        });
+
+        backToStudioBtn.addEventListener('click', () => {
+          guideView.hidden = true;
+          document.body.style.overflow = ''; // 背景スクロールの解除
+        });
+      }
+
+      // 3. デモ固有ボタンのハンドリング
+      const clearInputBtn = document.getElementById('clearInputBtn');
+      if (clearInputBtn) {
+        clearInputBtn.addEventListener('click', () => {
+          voiceSuite.inputModule.invalidatePendingFormatting();
+          document.getElementById('inputTextArea').value = '';
+          voiceSuite.updateCharCounters();
+          const aiStatusEl = document.getElementById('inputAiStatus');
+          if (aiStatusEl) {
+            aiStatusEl.className = 'vs-input-ai-status';
+            aiStatusEl.textContent = '';
+          }
+        });
+      }
+
+      const clearSynthBtn = document.getElementById('clearSynthBtn');
+      if (clearSynthBtn) {
+        clearSynthBtn.addEventListener('click', () => {
+          voiceSuite.synthModule.stop();
+          document.getElementById('synthTextArea').value = '';
+          voiceSuite.updateCharCounters();
+          voiceSuite.prepareTrackContainer('');
+        });
+      }
+
+      const insertSampleTextBtn = document.getElementById('insertSampleTextBtn');
+      if (insertSampleTextBtn) {
+        insertSampleTextBtn.addEventListener('click', () => {
+          voiceSuite.synthModule.stop();
+          document.getElementById('synthTextArea').value = SAMPLE_400_CHARS;
+          voiceSuite.updateCharCounters();
+          voiceSuite.prepareTrackContainer(SAMPLE_400_CHARS);
+          VoiceSuiteToast.show('400文字のサンプル文章を挿入しました（AI Studio英字表記・セリフ自然演技対応）。', 'info');
+        });
+      }
+
+      const insertAozoraSampleBtn = document.getElementById('insertAozoraSampleBtn');
+      if (insertAozoraSampleBtn) {
+        insertAozoraSampleBtn.addEventListener('click', () => {
+          voiceSuite.synthModule.stop();
+          document.getElementById('synthTextArea').value = SAMPLE_AOZORA_RUBY;
+          voiceSuite.updateCharCounters();
+          voiceSuite.prepareTrackContainer(SAMPLE_AOZORA_RUBY);
+          VoiceSuiteToast.show('青空文庫の文章を挿入しました（ルビを削除し漢字を維持して文字数ウェイト完全同期で朗読します）。', 'info', 4500);
+        });
+      }
+
+      // 4. 設定モーダル制御
+      const configModal = document.getElementById('configModalBackdrop');
+      const openConfigBtn = document.getElementById('openConfigBtn');
+      const closeConfigModalBtn = document.getElementById('closeConfigModalBtn');
+      const cancelConfigBtn = document.getElementById('cancelConfigBtn');
+      const saveConfigBtn = document.getElementById('saveConfigBtn');
+      const btnTestVoicevox = document.getElementById('btnTestVoicevox');
+      const diagResultBox = document.getElementById('diagResultBox');
+
+      const cfgGeminiKey = document.getElementById('cfgGeminiKey');
+      const cfgVoicevoxUrl = document.getElementById('cfgVoicevoxUrl');
+      const cfgVoicevoxApiKey = document.getElementById('cfgVoicevoxApiKey');
+      const cfgVoicevoxTimeout = document.getElementById('cfgVoicevoxTimeout');
+
+      const dictWordInput = document.getElementById('dictWordInput');
+      const dictYomiInput = document.getElementById('dictYomiInput');
+      const addDictBtn = document.getElementById('addDictBtn');
+      const dictList = document.getElementById('dictList');
+
+      let workingCustomDict = {};
+
+      const renderDictList = () => {
+        dictList.innerHTML = '';
+        const entries = Object.entries(workingCustomDict);
+        if (entries.length === 0) {
+          const emptyMsg = document.createElement('div');
+          emptyMsg.style.cssText = 'color: #64748b; font-size: 11px; text-align: center; padding: 4px;';
+          emptyMsg.textContent = 'カスタム登録された単語はありません';
+          dictList.appendChild(emptyMsg);
+          return;
+        }
+        entries.forEach(([w, y]) => {
+          const item = document.createElement('div');
+          item.className = 'vs-dict-item';
+
+          const labelSpan = document.createElement('span');
+          const strongWord = document.createElement('strong');
+          strongWord.textContent = w;
+          labelSpan.appendChild(strongWord);
+          labelSpan.appendChild(document.createTextNode(` ➔ ${y}`));
+
+          const delBtn = document.createElement('button');
+          delBtn.className = 'vs-btn vs-btn-sm vs-btn-danger';
+          delBtn.style.padding = '2px 6px';
+          delBtn.textContent = '削除';
+          delBtn.addEventListener('click', () => {
+            delete workingCustomDict[w];
+            renderDictList();
+          });
+
+          item.appendChild(labelSpan);
+          item.appendChild(delBtn);
+          dictList.appendChild(item);
+        });
+      };
+
+      addDictBtn.addEventListener('click', () => {
+        const w = dictWordInput.value.trim();
+        const y = dictYomiInput.value.trim();
+        if (!w || !y) {
+          VoiceSuiteToast.show('表記と読みの両方を入力してください。', 'warning');
+          return;
+        }
+        workingCustomDict[w] = y;
+        dictWordInput.value = '';
+        dictYomiInput.value = '';
+        renderDictList();
+      });
+
+      const loadConfigToInputs = () => {
+        cfgGeminiKey.value = voiceSuite.config.get('geminiApiKey') || '';
+        cfgVoicevoxUrl.value = voiceSuite.config.get('voicevoxUrl') || 'http://127.0.0.1:50021';
+        cfgVoicevoxApiKey.value = voiceSuite.config.get('voicevoxApiKey') || '';
+        cfgVoicevoxTimeout.value = voiceSuite.config.get('voicevoxTimeout') || 10000;
+        workingCustomDict = { ...(voiceSuite.config.get('customDict') || {}) };
+        renderDictList();
+        
+        diagResultBox.className = 'vs-diag-result';
+        diagResultBox.style.display = 'none';
+        diagResultBox.textContent = '';
+      };
+
+      openConfigBtn.addEventListener('click', () => {
+        loadConfigToInputs();
+        configModal.classList.add('show');
+      });
+
+      const closeModal = () => {
+        configModal.classList.remove('show');
+      };
+
+      closeConfigModalBtn.addEventListener('click', closeModal);
+      cancelConfigBtn.addEventListener('click', closeModal);
+
+      saveConfigBtn.addEventListener('click', () => {
+        voiceSuite.config.save({
+          geminiApiKey: cfgGeminiKey.value.trim(),
+          voicevoxUrl: cfgVoicevoxUrl.value.trim(),
+          voicevoxApiKey: cfgVoicevoxApiKey.value.trim(),
+          voicevoxTimeout: parseInt(cfgVoicevoxTimeout.value, 10) || 10000,
+          customDict: workingCustomDict
+        });
+        closeModal();
+        voiceSuite.checkInitialApiKeys();
+        VoiceSuiteToast.show('設定を保存しました。', 'success');
+      });
+
+      btnTestVoicevox.addEventListener('click', async () => {
+        const testUrl = cfgVoicevoxUrl.value.trim();
+        const testApiKey = cfgVoicevoxApiKey.value.trim();
+        voiceSuite.config.data.voicevoxUrl = testUrl;
+        voiceSuite.config.data.voicevoxApiKey = testApiKey;
+
+        btnTestVoicevox.textContent = '診断中...';
+        btnTestVoicevox.disabled = true;
+
+        const res = await voiceSuite.synthModule.testVoicevoxConnection();
+        btnTestVoicevox.textContent = '🔍 接続テスト';
+        btnTestVoicevox.disabled = false;
+
+        diagResultBox.style.display = 'block';
+        diagResultBox.textContent = '';
+        if (res.success) {
+          diagResultBox.className = 'vs-diag-result success';
+          diagResultBox.textContent = `✅ ${res.message}`;
+        } else {
+          diagResultBox.className = 'vs-diag-result error';
+          diagResultBox.appendChild(document.createTextNode(`❌ ${res.message}`));
+          diagResultBox.appendChild(document.createElement('br'));
+          const hintSmall = document.createElement('small');
+          hintSmall.textContent = '※URLが「http://127.0.0.1:50021」になっていること、必要な場合はAPIキーが正しいことをご確認ください。';
+          diagResultBox.appendChild(hintSmall);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

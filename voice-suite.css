@@ -1,4 +1,4 @@
-/* [稼働Ver 1.0.0 作業版 Rev.31] 音声読み上げスタジオ広大化(約70%/残全幅)・音声入力460px固定・ガイド完全独立全画面オーバーレイ化 */
+/* [稼働Ver 1.0.0 作業版 Rev.33] 読み上げ下部ステータス表示枠(.vs-synth-status-box)スタイル追加・完全整合 */
 
 :root {
   --vs-bg-base: #0b0f19;
@@ -133,7 +133,7 @@ body.vs-app-body {
   transform: translateY(-1px);
 }
 
-/* メイン2ペインレイアウト：左ペイン（広々ワイド約70%） vs 右ペイン（460px固定約30%） */
+/* メイン2ペインレイアウト：左ペイン（広々ワイド） vs 右ペイン（552px固定・約1.2倍幅） */
 .vs-grid {
   display: flex;
   flex-direction: row;
@@ -150,12 +150,12 @@ body.vs-app-body {
   box-sizing: border-box;
 }
 
-/* 右ペイン：音声入力エリア（460px完全固定・コンパクトな入力ツール） */
+/* 右ペイン：音声入力エリア（552px完全固定・旧460pxから1.2倍拡張） */
 .vs-pane-input {
-  flex: 0 0 460px;
-  width: 460px;
-  max-width: 460px;
-  min-width: 460px;
+  flex: 0 0 552px;
+  width: 552px;
+  max-width: 552px;
+  min-width: 552px;
   box-sizing: border-box;
 }
 
@@ -380,6 +380,17 @@ body.vs-app-body {
   animation: vs-dot-pulse 1.2s infinite ease-in-out;
 }
 
+.vs-status-badge.is-warning {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+}
+
+.vs-status-badge.is-warning .vs-badge-dot {
+  background-color: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+}
+
 @keyframes vs-dot-pulse {
   0% { transform: scale(0.9); opacity: 0.7; }
   50% { transform: scale(1.3); opacity: 1; }
@@ -519,8 +530,55 @@ body.vs-app-body {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* 読み上げエリア直下の専用ステータス・エラー表示枠 */
+.vs-synth-status-box {
+  font-size: 11.5px;
+  padding: 7px 12px;
+  border-radius: var(--vs-radius-sm);
+  margin-top: 10px;
+  line-height: 1.45;
+  display: none;
+  transition: var(--vs-transition);
+}
+
+.vs-synth-status-box.info {
+  display: block;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #c7d2fe;
+}
+
+.vs-synth-status-box.warning {
+  display: block;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #fbbf24;
+}
+
+.vs-synth-status-box.processing {
+  display: block;
+  background: rgba(14, 165, 233, 0.14);
+  border: 1px solid rgba(14, 165, 233, 0.45);
+  color: #7dd3fc;
+  animation: vs-status-glow 1.5s infinite alternate;
+}
+
+.vs-synth-status-box.success {
+  display: block;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #6ee7b7;
+}
+
+.vs-synth-status-box.error {
+  display: block;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
 /* ========================================================
-   音声入力部 専用スタイル（460px固定幅・コンパクト）
+   音声入力部 専用スタイル（552px固定幅・約1.2倍）
    ======================================================== */
 
 .vs-mode-selector-card {
@@ -555,7 +613,7 @@ body.vs-app-body {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--vs-radius-sm);
-  padding: 6px 8px;
+  padding: 6px 10px;
   text-align: left;
   cursor: pointer;
   transition: var(--vs-transition);
@@ -626,7 +684,7 @@ body.vs-app-body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 6px;
 }
 
@@ -638,10 +696,10 @@ body.vs-app-body {
 }
 
 .vs-mic-btn {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
   border-radius: var(--vs-radius-full);
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: linear-gradient(135deg, #1e293b, #0f172a);
@@ -657,8 +715,8 @@ body.vs-app-body {
 }
 
 .vs-mic-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   fill: currentColor;
   transition: transform 0.2s ease, fill 0.2s ease;
 }
@@ -688,8 +746,8 @@ body.vs-app-body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 50px;
-  height: 50px;
+  width: 52px;
+  height: 52px;
   border-radius: var(--vs-radius-full);
   border: 2px solid rgba(239, 68, 68, 0.4);
   opacity: 0;
@@ -707,17 +765,17 @@ body.vs-app-body {
 }
 
 .vs-input-pill-wave {
-  width: 130px;
-  height: 34px;
+  width: 140px;
+  height: 36px;
   background: rgba(13, 17, 28, 0.95);
   border-radius: var(--vs-radius-full);
   border: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-  padding: 0 10px;
+  padding: 0 12px;
   box-sizing: border-box;
 }
 
@@ -752,6 +810,10 @@ body.vs-app-body {
 .vs-recording-status.active .vs-status-dot {
   background-color: var(--vs-danger);
   box-shadow: 0 0 8px var(--vs-danger);
+}
+
+.vs-recording-status.error .vs-status-dot {
+  background-color: var(--vs-danger);
 }
 
 /* 左右ツラ合わせ用フィールド */
@@ -1125,6 +1187,13 @@ body.vs-app-body {
   margin-top: 6px;
 }
 
+.vs-guide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
 .vs-guide-table th,
 .vs-guide-table td {
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1297,8 +1366,17 @@ body.vs-app-body {
   padding: 10px;
 }
 
+.vs-dict-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .vs-dict-list {
-  max-height: 100px;
+  max-height: 110px;
   overflow-y: auto;
   margin-top: 6px;
   display: flex;

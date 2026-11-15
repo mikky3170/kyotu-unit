@@ -1,11 +1,15 @@
-// [稼働Ver 1.0.0 作業版 Rev.28] ミタマ設定整理・プリセットID一本化・独立性と高精度ロジック完全維持
+// [稼働Ver 1.1.0 作業版 Rev.31] 暁記ミタマID122修正・左ペイン下部エラー表示完全連携・タイムアウト安全ガード
 
 /**
- * VOICEVOX 標準プリセット定義（10種・ミタマも他キャラと同等に統一）
+ * VOICEVOX 標準プリセット定義（安全な14話者・暁記ミタマID:122更新・性別音圧フラグ連動）
  */
 const VOICEVOX_DEFAULT_PRESETS = [
   { id: '3', name: 'ずんだもん（ノーマル）', speaker: 3, gender: 'female' },
   { id: '8', name: '春日部つむぎ（ノーマル）', speaker: 8, gender: 'female' },
+  { id: '20', name: 'もち子さん（ノーマル）', speaker: 20, gender: 'female' },
+  { id: '99', name: '離途（ノーマル）', speaker: 99, gender: 'male_low' },
+  { id: '109', name: '東北イタコ（ノーマル）', speaker: 109, gender: 'female' },
+  { id: '119', name: '夜語トバリ（ノーマル）', speaker: 119, gender: 'female' },
   { id: '11', name: '玄野武宏（ノーマル）', speaker: 11, gender: 'male_low' },
   { id: '13', name: '青山龍星（ノーマル）', speaker: 13, gender: 'male_low' },
   { id: '12', name: '白上虎太郎（ノーマル）', speaker: 12, gender: 'male_low' },
@@ -13,7 +17,7 @@ const VOICEVOX_DEFAULT_PRESETS = [
   { id: '29', name: 'No.7（ノーマル）', speaker: 29, gender: 'female' },
   { id: '23', name: 'WhiteCUL（ノーマル）', speaker: 23, gender: 'female' },
   { id: '46', name: 'SAYO（ノーマル）', speaker: 46, gender: 'female' },
-  { id: '1000', name: '暁記ミタマ（ノーマル）', speaker: 1000, gender: 'female' }
+  { id: '122', name: '暁記ミタマ（ノーマル）', speaker: 122, gender: 'female' }
 ];
 
 /**
@@ -32,16 +36,17 @@ const BUILTIN_WORD_DICT = {
 };
 
 /**
- * 設定管理クラス（LocalStorage 永続化 ＆ 過去キー救済マージ）
+ * 設定管理クラス（LocalStorage 永続化 ＆ ローカル/クラウド切替 ＆ 辞書バックアップ入出力）
  */
 class VoiceSuiteConfig {
   constructor() {
     this.STORAGE_KEY = 'voice_suite_system_config_v1';
     this.data = {
       geminiApiKey: '',
+      ttsMode: 'local', // 'local' (PCローカル) または 'cloud' (api.tts.quest)
       voicevoxUrl: 'http://127.0.0.1:50021',
       voicevoxApiKey: '',
-      voicevoxTimeout: 10000,
+      voicevoxTimeout: 25000, // 東北イタコ等の長文合成に対応できるよう初期値を25秒へ拡張
       customDict: {}
     };
     this.load();
@@ -59,10 +64,11 @@ class VoiceSuiteConfig {
         if (parsed.voicevoxUrl && parsed.voicevoxUrl.includes('localhost')) {
           parsed.voicevoxUrl = parsed.voicevoxUrl.replace('localhost', '127.0.0.1');
         }
-        if (parsed.voicevoxTimeout && parsed.voicevoxTimeout < 5000) {
-          parsed.voicevoxTimeout = 10000;
+        // 過去の極端に短い誤入力（例: 1000ms=1秒）による即時タイムアウトを物理防御（最低10秒保証）
+        if (!parsed.voicevoxTimeout || parsed.voicevoxTimeout < 10000) {
+          parsed.voicevoxTimeout = 25000;
         }
-        delete parsed.mitamaSpeakerId; // プリセット統合により不要キーを安全に除去
+        delete parsed.mitamaSpeakerId;
         this.data = { ...this.data, ...parsed };
         this.save(this.data);
       }
@@ -72,6 +78,9 @@ class VoiceSuiteConfig {
   }
 
   save(newData) {
+    if (newData.voicevoxTimeout && newData.voicevoxTimeout < 10000) {
+      newData.voicevoxTimeout = 25000;
+    }
     this.data = { ...this.data, ...newData };
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
@@ -82,6 +91,31 @@ class VoiceSuiteConfig {
 
   get(key) {
     return this.data[key];
+  }
+
+  exportCustomDictJson() {
+    const dict = this.data.customDict || {};
+    return JSON.stringify(dict, null, 2);
+  }
+
+  importCustomDictJson(jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error('辞書形式が無効です（キーと値のペアである必要があります）');
+      }
+      const cleaned = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof k === 'string' && typeof v === 'string' && k.trim() && v.trim()) {
+          cleaned[k.trim()] = v.trim();
+        }
+      }
+      const merged = { ...(this.data.customDict || {}), ...cleaned };
+      this.save({ customDict: merged });
+      return { success: true, count: Object.keys(cleaned).length, total: Object.keys(merged).length };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
   }
 }
 
@@ -237,9 +271,22 @@ class VoiceInputModule {
       console.warn('[VoiceInputModule] 音声認識イベント:', event.error);
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         this.isRecognizing = false;
-        this.onError('マイクへのアクセスが拒否されました。ブラウザの設定をご確認ください。');
-        this.stop();
-      } else if (event.error === 'aborted' || event.error === 'audio-capture' || event.error === 'network') {
+        const msg = '❌ マイクへのアクセスが拒否されました。ブラウザのアドレスバーからマイクを許可してください。';
+        this.onError(msg);
+        this.onAiStatusChange({ type: 'error', message: msg });
+        this.rollback();
+      } else if (event.error === 'audio-capture') {
+        this.isRecognizing = false;
+        const msg = '❌ マイク機器が見つからないか、他のアプリに占有されています。';
+        this.onError(msg);
+        this.onAiStatusChange({ type: 'error', message: msg });
+        this.rollback();
+      } else if (event.error === 'network') {
+        this.isRecognizing = false;
+        const msg = '❌ 音声認識サーバーとの通信が切断されました（ネットワーク接続を確認してください）。';
+        this.onError(msg);
+        this.onAiStatusChange({ type: 'error', message: msg });
+      } else if (event.error === 'aborted' || event.error === 'no-speech') {
         this.isRecognizing = false;
       }
     };
@@ -252,6 +299,24 @@ class VoiceInputModule {
         } catch (e) {}
       }
     };
+  }
+
+  rollback() {
+    this.isRecording = false;
+    this.isRecognizing = false;
+    this.stopWatchdog();
+    this.stopTimer();
+    this.cleanupAudioStream();
+    this.resetBars();
+    this.onStateChange(false);
+  }
+
+  resetBars() {
+    this.smoothedVolume = 0;
+    for (let i = 0; i < this.neonBars.length; i++) {
+      this.neonBars[i].style.height = '5px';
+      this.neonBars[i].style.borderRadius = '50%';
+    }
   }
 
   startWatchdog() {
@@ -294,11 +359,29 @@ class VoiceInputModule {
     }
   }
 
+  cleanupAudioStream() {
+    if (this.mediaStream) {
+      try {
+        this.mediaStream.getTracks().forEach((track) => track.stop());
+      } catch (e) {}
+      this.mediaStream = null;
+    }
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      try {
+        this.audioContext.close();
+      } catch (e) {}
+      this.audioContext = null;
+      this.analyser = null;
+    }
+  }
+
   async start() {
     if (this.isRecording) return;
 
     if (!this.recognition) {
-      this.onError('お使いのブラウザは音声認識（Web Speech API）に対応していません。Chrome / Edge 等をご利用ください。');
+      const msg = '❌ お使いのブラウザは音声認識に対応していません。Chrome / Edge 等をご利用ください。';
+      this.onError(msg);
+      this.onAiStatusChange({ type: 'error', message: msg });
       return;
     }
 
@@ -329,10 +412,18 @@ class VoiceInputModule {
       this.startWatchdog();
       this.startTimer();
       this.onStateChange(true);
+      this.onAiStatusChange({ type: 'info', message: '🎙️ 音声を聴き取っています...（話し終えたら再度マイクを押して停止）' });
     } catch (err) {
       console.error('[VoiceInputModule] マイク起動エラー:', err);
-      this.onError('マイクへのアクセスが拒否されたか、デバイスが存在しません。');
-      this.stop();
+      let errMsg = '❌ マイクへのアクセスが拒否されたか、デバイスが存在しません。';
+      if (err.name === 'NotAllowedError') {
+        errMsg = '❌ マイクの使用が許可されていません。ブラウザのアドレスバーからマイクを許可してください。';
+      } else if (err.name === 'NotFoundError') {
+        errMsg = '❌ マイク機器が見つかりません。マイクがPCに接続されているか確認してください。';
+      }
+      this.onError(errMsg);
+      this.onAiStatusChange({ type: 'error', message: errMsg });
+      this.rollback();
     }
   }
 
@@ -342,6 +433,7 @@ class VoiceInputModule {
     this.isRecognizing = false;
     this.stopWatchdog();
     this.stopTimer();
+    this.resetBars();
     this.onStateChange(false);
 
     if (this.recognition) {
@@ -350,23 +442,15 @@ class VoiceInputModule {
       } catch (e) {}
     }
 
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach((track) => track.stop());
-      this.mediaStream = null;
-    }
-
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      try {
-        await this.audioContext.close();
-      } catch (e) {}
-      this.audioContext = null;
-      this.analyser = null;
-    }
+    this.cleanupAudioStream();
 
     const rawPiece = (this.finalTranscript + (this.interimTranscript ? ' ' + this.interimTranscript : '')).trim();
     this.interimTranscript = '';
 
-    if (!rawPiece) return;
+    if (!rawPiece) {
+      this.onAiStatusChange({ type: 'info', message: '待機中（マイクを押して発話）' });
+      return;
+    }
 
     const currentSession = this.sessionId;
     const savedPrefix = this.prefixText;
@@ -419,11 +503,11 @@ class VoiceInputModule {
       for (let i = 0; i < this.neonBars.length; i++) {
         const bar = this.neonBars[i];
         const weight = barWeights[i] || 0.6;
-        const minH = 6;
-        const maxH = 24;
+        const minH = 5;
+        const maxH = 26;
         const currentH = minH + (maxH - minH) * this.smoothedVolume * weight;
         bar.style.height = `${currentH.toFixed(1)}px`;
-        bar.style.borderRadius = currentH <= 7 ? '50%' : '9999px';
+        bar.style.borderRadius = currentH <= 6 ? '50%' : '9999px';
       }
     };
 
@@ -432,13 +516,16 @@ class VoiceInputModule {
 
   destroy() {
     this.invalidatePendingFormatting();
-    this.stop();
+    this.rollback();
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = null;
     }
   }
 
+  /**
+   * Gemini API 呼び出し（8秒 ➔ 16秒 ➔ 30秒 段階的タイムアウト＆安全ロールバック）
+   */
   async formatWithGemini(rawPiece, mode = 'A', expectedSessionId = this.sessionId, savedPrefix = this.prefixText, savedSuffix = this.suffixText) {
     const apiKey = this.config.get('geminiApiKey');
     const modeLabel = mode === 'A' ? 'パターンA (原文忠実)' : 'パターンB (AI Studioスマート)';
@@ -447,20 +534,14 @@ class VoiceInputModule {
       if (this.sessionId !== expectedSessionId) return;
       this.onAiStatusChange({
         type: 'warning',
-        message: '⚠️ Gemini APIキーが未設定です。右上の⚙️設定から登録してください（生テキストを維持）'
+        message: '⚠️ Gemini APIキー未設定のため生テキストを維持しました。右上の⚙️設定から登録できます。'
       });
-      this.notifyToast('⚠️ Gemini APIキーが未設定です。右上の⚙️設定から登録してください。', 'warning', 6000);
+      this.notifyToast('⚠️ Gemini APIキーが未設定です。生テキストを維持します。', 'warning', 5000);
       this.onResult(rawPiece, false, savedPrefix, savedSuffix);
       return;
     }
 
-    this.onAiStatusChange({
-      type: 'processing',
-      message: `✨ AIが文章の体裁・接続詞改行を整えています...（${modeLabel}）`
-    });
-
     let systemPrompt = '';
-
     if (mode === 'A') {
       systemPrompt = `あなたは音声認識テキストの整形を行う専門アシスタントです。
 ユーザーが話したテキストを【パターンA：原文忠実モード】として整形してください。
@@ -472,18 +553,9 @@ class VoiceInputModule {
 
 【整形ルール】
 1. 言い淀み（「えーと」「あのー」「まあ」「その」など単なる発話のつっかえ）のみを削除してください。
-   ※ただし「『えーと』という言葉」「あの、というフィラー」のように単語自体に言及している場合は絶対に保持してください。
 2. 句読点（、。）を文脈に合わせて自然に補ってください。
-3. 「まず」「次に」「また」「そして」「さらに」「一方で」「それから」「最後に」などの接続詞や、話題の大きな切り替わりごとに改行を入れてください。
-   ※空行（2連続改行）は絶対に作らず、改行1回（単一改行）としてください。
+3. 「まず」「次に」「また」「そして」「さらに」「一方で」「それから」「最後に」などの接続詞や、話題の大きな切り替わりごとに改行を入れてください（空行・2連続改行は禁止）。
 4. 話し言葉の語尾や長い文構造はそのまま維持してください。
-
-【変換例（パターンA）】
-入力: えーとですね明日の午後からのミーティングなんですけれどもちょっと資料の準備が間に合わない可能性がありましてそれで時間を1時間ほど遅らせていただくことは可能でしょうかよろしくお願いいたします
-出力:
-明日の午後からのミーティングなんですけれども、ちょっと資料の準備が間に合わない可能性がありまして、
-それで時間を1時間ほど遅らせていただくことは可能でしょうか。
-よろしくお願いいたします。
 
 出力は整形後の本文のみを返してください。解説や挨拶は一切含めないでください。`;
     } else {
@@ -492,66 +564,72 @@ class VoiceInputModule {
 
 【パターンBの最重要ポリシー（複文分割・重複排除・知的ドキュメント化）】
 ・話者の「意図・意味・伝達情報」は100%完全に保持したまま、口語特有のダラダラと続く長い文を、意味のまとまりごとに適切な「。」でスパッと【複数の引き締まった文に分割】してください。
-・同じ意味の堂々巡りや重複表現（「〜かなと思っててそれで〜と思ったり」等）を削ぎ落とし、すっきりとした知的な表現に統合してください。
+・同じ意味の堂々巡りや重複表現を削ぎ落とし、すっきりとした知的な表現に統合してください。
 ・ビジネスチャット、Slack、メール、議事録、報告書にそのままコピー＆ペーストして使えるスマートな文体に仕立て上げてください。
 
 【整形ルール】
 1. 複文の分割: 「〜ですが、〜だったので、〜ですけど」と数珠繋ぎになっている文は、意味の切れ目で「。」を打ち、独立した読みやすい短文に分割してください。
 2. 重複表現の完全整理: 無駄な言い回しの重複を排除し、的確な述語にまとめてください。
 3. フィラー（えーと、あの等）の完全除去。
-4. 話題の区切りや接続詞で単一改行（改行1回）を入れて視認性を高めてください。空行（2連続改行）は禁止です。
-5. 必要な情報や具体的な条件・ニュアンスは勝手に削減（過度な箇条書き要約）せず、文章として美しく整えてください。
-
-【変換例（パターンB）】
-入力: えーとですね明日の午後からのミーティングなんですけれどもちょっと資料の準備が間に合わない可能性がありましてそれで時間を1時間ほど遅らせていただくことは可能でしょうかよろしくお願いいたします
-出力:
-明日の午後からのミーティングについてご相談です。
-資料の準備に遅れが生じる可能性があるため、開始時間を1時間遅らせていただくことは可能でしょうか。
-ご検討のほど、よろしくお願いいたします。
+4. 話題の区切りや接続詞で単一改行（改行1回）を入れて視認性を高めてください（空行・2連続改行は禁止）。
 
 出力は整形後の本文のみを返してください。解説や挨拶は一切含めないでください。`;
     }
 
+    const timeoutSteps = [8000, 16000, 30000];
     const models = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
     let formattedResult = null;
 
-    for (const model of models) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: `${systemPrompt}\n\n対象テキスト:\n${rawPiece}` }]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.15
+    for (let stepIdx = 0; stepIdx < timeoutSteps.length; stepIdx++) {
+      if (this.sessionId !== expectedSessionId) return;
+
+      const currentTimeout = timeoutSteps[stepIdx];
+      const stepNum = stepIdx + 1;
+      const totalSteps = timeoutSteps.length;
+
+      this.onAiStatusChange({
+        type: 'processing',
+        message: `✨ AI整形中（試行 ${stepNum}/${totalSteps}: 最大${currentTimeout / 1000}秒待機中... / ${modeLabel}）`
+      });
+
+      for (const model of models) {
+        if (this.sessionId !== expectedSessionId) return;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
+
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n対象テキスト:\n${rawPiece}` }] }],
+              generationConfig: { temperature: 0.15 }
+            }),
+            signal: controller.signal
+          });
+
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            const data = await response.json();
+            const candidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (candidate && candidate.trim()) {
+              formattedResult = candidate.trim();
+              break;
             }
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP Error ${response.status}`);
+          }
+        } catch (err) {
+          clearTimeout(timeoutId);
+          console.warn(`[VoiceInputModule] ${model} (Step ${stepNum}: ${currentTimeout}ms) 試行失敗:`, err.message);
         }
-
-        const data = await response.json();
-        const candidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (candidate) {
-          formattedResult = candidate.trim();
-          break;
-        }
-      } catch (err) {
-        console.warn(`[VoiceInputModule] ${model} 整形失敗:`, err);
       }
+
+      if (formattedResult) break;
     }
 
-    if (this.sessionId !== expectedSessionId) {
-      return;
-    }
+    if (this.sessionId !== expectedSessionId) return;
 
     if (formattedResult) {
       this.onAiStatusChange({
@@ -562,9 +640,9 @@ class VoiceInputModule {
     } else {
       this.onAiStatusChange({
         type: 'error',
-        message: '❌ AI整形エラー（通信失敗のため聞き取り生テキストを維持）'
+        message: '⚠️ AI整形がタイムアウトしました。聞き取り生テキストを維持して安全に確定しました。'
       });
-      this.notifyToast('AI整形に失敗したため、聞き取り生テキストを維持します。', 'warning');
+      this.notifyToast('AI整形がタイムアウトしたため、生テキストを確定しました。', 'warning', 5000);
       this.onResult(rawPiece, false, savedPrefix, savedSuffix);
     }
   }
@@ -595,12 +673,12 @@ class VoiceSynthModule {
     this.activeCurrentPhraseIdx = 0;
     this.totalSynthPhrases = 0;
 
-    // Web Speech 一時停止/再開用タイマー状態
     this.webSpeechStartTime = 0;
     this.webSpeechElapsedMs = 0;
 
     this.onPlayStateChange = options.onPlayStateChange || (() => {});
     this.onProgress = options.onProgress || (() => {});
+    this.onStatusMessage = options.onStatusMessage || (() => {});
     this.onPhraseSpeaking = options.onPhraseSpeaking || (() => {});
   }
 
@@ -698,7 +776,79 @@ class VoiceSynthModule {
   }
 
   /**
-   * 5大文法カテゴリーに基づく網羅的・自律型文脈読み分けプレプロセッサ
+   * VOICEVOX 起動チェック（1.5秒タイムアウトの高速疎通判定）
+   */
+  async checkVoicevoxAlive() {
+    const baseUrl = (this.config.get('voicevoxUrl') || 'http://127.0.0.1:50021').replace(/\/+$/, '');
+    const headers = this.buildVoicevoxHeaders();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+
+    try {
+      const res = await fetch(`${baseUrl}/version`, {
+        method: 'GET',
+        headers,
+        mode: 'cors',
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      return res.ok;
+    } catch (e) {
+      clearTimeout(timer);
+      return false;
+    }
+  }
+
+  /**
+   * core_engine.js 実績のクラウドVOICEVOX (api.tts.quest) 音声生成エンジン
+   */
+  async synthesizeWithTtsQuest(text, speakerId, signal) {
+    const apiKey = (this.config.get('voicevoxApiKey') || '').trim();
+    let initUrl = `https://api.tts.quest/v3/voicevox/synthesis?text=${encodeURIComponent(text)}&speaker=${speakerId}`;
+    if (apiKey) initUrl += `&key=${encodeURIComponent(apiKey)}`;
+
+    const initRes = await fetch(initUrl, { signal }).catch((err) => {
+      throw new Error(`クラウド通信エラー (${err.message})`);
+    });
+
+    if (initRes.status === 429) {
+      throw new Error('クラウドAPI レート制限(429)です。少し待ってから再試行してください。');
+    }
+    if (!initRes.ok) {
+      throw new Error(`クラウドAPI HTTPエラー ${initRes.status}`);
+    }
+
+    const initData = await initRes.json();
+    if (initData.isAudioError) {
+      throw new Error('クラウドVOICEVOX音声生成エラー');
+    }
+
+    let directUrl = initData.mp3StreamingUrl || initData.mp3DownloadUrl;
+    if (!directUrl && initData.audioStatusUrl) {
+      for (let i = 0; i < 25; i++) {
+        if (signal.aborted) throw new Error('合成が中断されました');
+        await new Promise((r) => setTimeout(r, 350));
+        const sRes = await fetch(initData.audioStatusUrl, { signal });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (sData.isAudioReady) {
+            directUrl = sData.mp3StreamingUrl || sData.mp3DownloadUrl;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!directUrl) {
+      throw new Error('クラウド音声生成タイムアウト');
+    }
+
+    const aRes = await fetch(directUrl, { signal });
+    return await aRes.blob();
+  }
+
+  /**
+   * 5大文法カテゴリーに基づく自律型文脈読み分け（段階的タイムアウト＆安全フォールバック）
    */
   async resolveContextualReadings(rawText) {
     const apiKey = this.config.get('geminiApiKey');
@@ -716,70 +866,59 @@ class VoiceSynthModule {
       }
     }
 
-    if (!apiKey) {
-      this.notifyToast('⚠️ Gemini APIキー未設定のため、文脈読み分けをスキップします。右上の⚙️設定から登録してください。', 'warning', 6000);
-      return text;
-    }
+    if (!apiKey) return text;
 
     const prompt = `あなたは極めて優秀な音声合成（VOICEVOX/OpenJTalk）専門の日本語言語学エンジンです。
 入力された文章全体の文法構造、品詞、係り受け、文脈を解析し、VOICEVOXが一切誤読せず、自然で完璧な発音を行えるように、以下の【5大文法カテゴリー】に該当する箇所を適切な平仮名・正規化表記に補正したテキストを出力してください。
 
 【5大文法カテゴリーによる網羅的補正ルール】
+① 形式名詞・比況・様態: 「〜様になった/〜様な/〜様に」➔「よう」、「〜した方がいい/若い方」➔「ほう」、「思う所/知る事/困った時/そんな訳/指示の通り」➔「ところ/こと/とき/わけ/とおり」
+② 暦 vs 期間・数量: 暦月・暦日は「今年の2月ごろ」「3月1日（または3月ついたち）」のようにアラビア数字または確定平仮名へ
+③ 接尾辞・複合語の連濁: 「〜頃」➔「ごろ」、「〜勝ち」➔「がち」、「〜振り」➔「ぶり」、「〜丈け」➔「だけ」
+④ 多音字・文脈依存語: 貨幣・金銭の「金」➔「かね」（大金は「たいきん」）、順序・翌日の「次」➔「つぎ」、存在・人間の「奴」➔「やつ」
+⑤ 近代文学の慣用表記: 「その儘」➔「そのまま」、「〜位で」➔「〜くらいで」、「〜と云う」➔「〜という」、「抛り出す」➔「ほうりだす」
 
-① 形式名詞・比況・様態（実質名詞との混同防止）
-・直前に用言（動詞や形容詞の連体形など）を伴い、形式名詞・比況・様態として機能している漢字は、本来の実質名詞の読み（音読みや敬称）に引きずられないよう、例外なく【平仮名】に補正してください。
-  ・「様」：比況・様態（「〜様になった」「〜様な」「〜様に」「来る様」「怖がっている様」等）➔ 必ず「よう」
-  ・「方」：傾向・属性・比較（「見える方で」「若い方」「〜した方がいい」等）➔ 必ず「ほう」
-  ・「所」「事」「時」「訳」「通り」：形式名詞（「思う所」「知る事」「困った時」「そんな訳」「指示の通り」等）➔ 必ず「ところ」「こと」「とき」「わけ」「とおり」
-
-② 暦（カレンダー） vs 期間・数量（漢数字の正規化）
-・「今年」「去年」「来年」「先月」「翌月」など、時期や暦月・暦日を表す文脈の漢数字は、期間（ふたつき、いちにち等）への誤読を防ぐため、【アラビア数字＋月日】または【確定した平仮名】に正規化してください。
-  （例：「今年の二月頃」➔「今年の2月ごろ」、「三月一日」➔「3月1日」または「3月ついたち」）
-
-③ 接尾辞・複合語の連濁（清音・濁音の自動補正）
-・名詞や動詞連用形の後ろに付き、自然な朗読において濁音化（連濁）する接尾辞・副助詞は、辞書の見出し語（清音）での誤読を防ぐため、必ず濁音の【平仮名】に補正してください。
-  （例：「〜頃」➔「ごろ」、「〜勝ち」➔「がち」、「〜振り」➔「ぶり」、「〜丈け」➔「だけ」、「〜気味」➔「ぎみ」）
-
-④ 多音字・文脈依存語（日常語・訓読み優先）
-・文脈により読みが分岐する多音字は、文脈に適した読み（平仮名）に補正してください。
-  ・「金」：貨幣、給与、盗難金、金銭を指す文脈 ➔ 必ず「かね」（「きん」と読ませない。「大金」は「たいきん」）
-  ・「次」：順序、次回来訪、次の日などを指す文脈 ➔ 必ず「つぎ」（「じ」と音読みさせない）
-  ・「奴」：存在・人間を指す文脈（「無作法な奴」「あんな奴」等）➔ 必ず「やつ」
-
-⑤ 近代文学・昭和文学の慣用漢字・当て字
-・近代文学作品で多用される難訓・当て字は、現代日本語の自然な発音（平仮名）に統一してください。
-  （例：「その儘」➔「そのまま」、「〜位で」➔「〜くらいで」、「〜と云う」➔「〜という」、「抛り出す」➔「ほうりだす」、「忍入る」➔「しのびいる」）
-
-【制約事項（追従ハイライト同期のため絶対厳守）】
-・句読点（、。，．！？）および改行の位置と数は原文から一切変更しないでください（新たに増やしたり削除したりしない）。
-・通常の平易な漢字、文の構造、セリフ括弧「」はそのまま維持してください。
-・要約や言い換えは一切禁止です。原文の表現・語順は変えずに発音のみを最適化してください。
-・出力は、補正後のテキスト本文のみを出力してください。挨拶や解説は一切含めないでください。
+【制約事項】句読点・改行の位置と数は原文から一切変更しないこと。セリフ括弧「」は維持すること。要約・言い換えは禁止。本文のみを出力すること。
 
 対象テキスト:
 ${text}`;
 
+    const timeoutSteps = [8000, 16000, 30000];
     const models = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
-    for (const model of models) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1 }
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const candidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (candidate) {
-            return candidate.trim();
+
+    for (let stepIdx = 0; stepIdx < timeoutSteps.length; stepIdx++) {
+      if (this.abortController?.signal.aborted) break;
+
+      const currentTimeout = timeoutSteps[stepIdx];
+      for (const model of models) {
+        if (this.abortController?.signal.aborted) break;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
+
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.1 }
+            }),
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+
+          if (res.ok) {
+            const data = await res.json();
+            const candidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (candidate && candidate.trim()) {
+              return candidate.trim();
+            }
           }
+        } catch (e) {
+          clearTimeout(timeoutId);
         }
-      } catch (e) {
-        console.warn(`[VoiceSynthModule] ${model} 汎用文脈読み分け解析スキップ:`, e);
       }
     }
 
@@ -789,12 +928,32 @@ ${text}`;
   async speak(text, voiceType = '3') {
     this.stop();
 
+    const ttsMode = this.config.get('ttsMode') || 'local';
+
+    // VOICEVOX話者が選ばれている場合の起動監視
+    if (voiceType !== 'webspeech') {
+      if (ttsMode === 'local') {
+        this.onProgress('VOICEVOX起動確認中...');
+        this.onStatusMessage({ type: 'processing', message: '🔍 PCローカルのVOICEVOXエンジン（127.0.0.1:50021）の起動を確認しています...' });
+        const isAlive = await this.checkVoicevoxAlive();
+        if (!isAlive) {
+          this.stop();
+          const warnMsg = '⚠️ VOICEVOXアプリが起動していません。ローカルでアプリを起動するか、右上の⚙️設定から「クラウド合成」に切り替えてください。';
+          this.onProgress('VOICEVOX未起動');
+          this.onStatusMessage({ type: 'warning', message: warnMsg });
+          this.notifyToast(warnMsg, 'warning', 6000);
+          return;
+        }
+      }
+    }
+
     this.isPlaying = true;
     this.isPaused = false;
     this.abortController = new AbortController();
     this.onPlayStateChange(true, false);
 
-    this.onProgress('文脈と発音を最適化中...');
+    this.onProgress('文脈・発音を最適化中...');
+    this.onStatusMessage({ type: 'processing', message: '✨ Gemini自律判定により文脈と多音字（金、奴、日付など）の発音を最適化しています...' });
     const speechReadyText = await this.resolveContextualReadings(text);
     if (this.abortController.signal.aborted) return;
 
@@ -807,19 +966,19 @@ ${text}`;
     this.totalSynthPhrases = sentences.reduce((sum, s) => sum + this.splitTextIntoPhrases(s).length, 0);
 
     if (voiceType === 'webspeech') {
+      this.onStatusMessage({ type: 'info', message: '⚡ ブラウザ標準音声（Web Speech API）で発話しています。' });
       await this.speakWithWebSpeech(sentences);
     } else {
       const speakerPreset = this.getSpeakerPreset(voiceType);
-      await this.speakWithVoicevoxSequentialPipeline(sentences, voiceType, speakerPreset);
+      await this.speakWithSequentialPipeline(sentences, voiceType, speakerPreset, ttsMode);
     }
   }
 
-  async speakWithVoicevoxSequentialPipeline(sentences, voiceType, speakerPreset) {
+  async speakWithSequentialPipeline(sentences, voiceType, speakerPreset, ttsMode) {
     const total = sentences.length;
     let completedSentences = 0;
     let fallbackTriggered = false;
 
-    // 全話者共通のID解釈（ミタマも他キャラと同等に処理）
     const speakerId = parseInt(voiceType, 10);
     const speakerName = speakerPreset ? speakerPreset.name : `ID: ${speakerId}`;
     const isMaleLowVoice = speakerPreset && speakerPreset.gender === 'male_low';
@@ -835,8 +994,16 @@ ${text}`;
         return { index, blob: null, sentence: '', phrases };
       }
 
+      // クラウド合成 (tts.quest) の場合
+      if (ttsMode === 'cloud') {
+        const blob = await this.synthesizeWithTtsQuest(sentence, speakerId, this.abortController.signal);
+        return { index, blob, sentence, phrases: phrases.length > 0 ? phrases : [sentence] };
+      }
+
+      // PCローカル合成の場合（最低10秒以上のタイムアウト安全ガード）
       const baseUrl = (this.config.get('voicevoxUrl') || 'http://127.0.0.1:50021').replace(/\/+$/, '');
-      const timeoutMs = parseInt(this.config.get('voicevoxTimeout') || 10000, 10);
+      const rawTimeout = parseInt(this.config.get('voicevoxTimeout'), 10);
+      const timeoutMs = (!rawTimeout || rawTimeout < 10000) ? 25000 : rawTimeout;
       const headers = this.buildVoicevoxHeaders();
 
       const controller = new AbortController();
@@ -854,11 +1021,14 @@ ${text}`;
           mode: 'cors',
           signal: controller.signal
         }).catch((err) => {
-          if (isTimedOut) throw new Error(`VOICEVOX応答タイムアウト (${timeoutMs / 1000}秒超過)`);
+          if (isTimedOut) throw new Error(`VOICEVOX音声生成タイムアウト (${timeoutMs / 1000}秒超過)`);
           throw new Error(`VOICEVOX接続失敗 (${err.message})`);
         });
 
         if (!queryRes.ok) {
+          if (queryRes.status === 422) {
+            throw new Error(`HTTP 422: 指定された話者ID (${speakerId}) はローカルVOICEVOXに存在しません`);
+          }
           throw new Error(`audio_query エラー: HTTP ${queryRes.status}`);
         }
         const queryJson = await queryRes.json();
@@ -915,10 +1085,9 @@ ${text}`;
 
     try {
       this.onProgress(`[1/${total}] 音声を準備中...`);
+      this.onStatusMessage({ type: 'info', message: `🔊 再生準備中: ${speakerName} (${ttsMode === 'cloud' ? 'クラウド合成' : 'PCローカル'})` });
       ensureFetch(0);
-      if (total > 1) {
-        ensureFetch(1);
-      }
+      if (total > 1) ensureFetch(1);
 
       for (let i = 0; i < total; i++) {
         if (this.abortController.signal.aborted) break;
@@ -975,6 +1144,7 @@ ${text}`;
         currentPhraseIdx += sentencePhrases.length;
         completedSentences = i + 1;
         this.onProgress(`[${completedSentences}/${total}] 再生中: ${speakerName}`);
+        this.onStatusMessage({ type: 'success', message: `🔊 再生中 [${completedSentences}/${total}]: ${speakerName}（画面のテキスト追従ハイライトが連動しています）` });
 
         try {
           await audio.play();
@@ -990,13 +1160,18 @@ ${text}`;
       }
 
       this.stop();
+      this.onStatusMessage({ type: 'success', message: '✅ すべての読み上げが正常に完了しました。' });
     } catch (err) {
-      console.warn('[VoiceSynthModule] VOICEVOX 失敗。Web Speech API にフォールバックします:', err);
+      console.warn('[VoiceSynthModule] VOICEVOX 失敗。標準音声へ安全にフォールバックします:', err);
       fallbackTriggered = true;
       this.revokeCurrentAudioUrl();
 
       const reasonMsg = err.message || '接続エラー';
-      this.notifyToast(`VOICEVOXエラー: ${reasonMsg} → 標準音声で発話します`, 'warning', 6000);
+      const failMsg = `⚠️ VOICEVOXエラー: ${reasonMsg} ➔ 標準音声（Web Speech API）へ安全に切り替えて継続します。`;
+      
+      // 音声読み上げエリアの下（左ペイン下部）に確実に警告バナーを表示
+      this.onStatusMessage({ type: 'warning', message: failMsg });
+      this.notifyToast(failMsg, 'warning', 6000);
 
       const remainingSentences = sentences.slice(completedSentences);
       if (remainingSentences.length > 0 && !this.abortController.signal.aborted) {
@@ -1050,7 +1225,9 @@ ${text}`;
   speakWithWebSpeech(sentences, startPhraseIdx = 0) {
     return new Promise((resolve) => {
       if (!('speechSynthesis' in window)) {
-        this.notifyToast('このブラウザは Web Speech API に対応していません。', 'error');
+        const msg = '❌ このブラウザは Web Speech API に対応していません。';
+        this.notifyToast(msg, 'error');
+        this.onStatusMessage({ type: 'error', message: msg });
         this.stop();
         return resolve();
       }
@@ -1063,6 +1240,7 @@ ${text}`;
       const speakNext = () => {
         if (index >= total || this.abortController.signal.aborted) {
           this.stop();
+          this.onStatusMessage({ type: 'success', message: '✅ 標準音声での発話が完了しました。' });
           return resolve();
         }
 
@@ -1070,6 +1248,7 @@ ${text}`;
         const sentencePhrases = this.splitTextIntoPhrases(sentence);
 
         this.onProgress(`[${index + 1}/${total}] 標準音声 再生中`);
+        this.onStatusMessage({ type: 'info', message: `⚡ 標準音声 発話中 [${index + 1}/${total}]` });
 
         this.currentUtterance = new SpeechSynthesisUtterance(sentence);
         this.currentUtterance.lang = 'ja-JP';
@@ -1134,6 +1313,7 @@ ${text}`;
       window.speechSynthesis.pause();
     }
     this.onPlayStateChange(false, true);
+    this.onStatusMessage({ type: 'info', message: '⏸️ 一時停止中（「▶️ 再開」ボタンで続きから発話できます）' });
   }
 
   resume() {
@@ -1166,6 +1346,7 @@ ${text}`;
       window.speechSynthesis.resume();
     }
     this.onPlayStateChange(true, false);
+    this.onStatusMessage({ type: 'success', message: '▶️ 読み上げを再開しました。' });
   }
 
   stop() {
@@ -1206,6 +1387,29 @@ ${text}`;
   }
 
   async testVoicevoxConnection() {
+    const ttsMode = this.config.get('ttsMode') || 'local';
+
+    if (ttsMode === 'cloud') {
+      try {
+        const apiKey = (this.config.get('voicevoxApiKey') || '').trim();
+        let testUrl = `https://api.tts.quest/v3/voicevox/synthesis?text=${encodeURIComponent('テスト')}&speaker=3`;
+        if (apiKey) testUrl += `&key=${encodeURIComponent(apiKey)}`;
+        const res = await fetch(testUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.isAudioError) throw new Error('音声生成エラー');
+        return {
+          success: true,
+          message: 'クラウド音声合成 (api.tts.quest) への接続に成功しました！'
+        };
+      } catch (err) {
+        return {
+          success: false,
+          message: `クラウド接続失敗: ${err.message}`
+        };
+      }
+    }
+
     const baseUrl = (this.config.get('voicevoxUrl') || 'http://127.0.0.1:50021').replace(/\/+$/, '');
     const headers = this.buildVoicevoxHeaders();
 
@@ -1257,6 +1461,7 @@ class VoiceSuite {
       inputCharCounter: options.inputCharCounter || null,
       inputAiStatus: options.inputAiStatus || null,
       synthTextArea: options.synthTextArea || null,
+      synthStatusBox: options.synthStatusBox || null,
       readTrackContainer: options.readTrackContainer || null,
       voiceSelect: options.voiceSelect || null,
       speedSlider: options.speedSlider || null,
@@ -1280,12 +1485,16 @@ class VoiceSuite {
       onAiStatusChange: (status) => this.handleInputAiStatusChange(status),
       onInterimResult: (piece, prefix, suffix) => this.handleInputInterim(piece, prefix, suffix),
       onResult: (piece, formatted, prefix, suffix) => this.handleInputResult(piece, formatted, prefix, suffix),
-      onError: (msg) => VoiceSuiteToast.show(msg, 'error')
+      onError: (msg) => {
+        VoiceSuiteToast.show(msg, 'error');
+        this.handleInputAiStatusChange({ type: 'error', message: msg });
+      }
     });
 
     this.synthModule = new VoiceSynthModule(this.config, {
       onPlayStateChange: (playing, paused) => this.handleSynthStateChange(playing, paused),
       onProgress: (status) => this.handleSynthProgress(status),
+      onStatusMessage: (status) => this.handleSynthStatusMessage(status),
       onPhraseSpeaking: (idx, totalPhrases) => this.handlePhraseSpeaking(idx, totalPhrases)
     });
 
@@ -1362,6 +1571,7 @@ class VoiceSuite {
         this.updateCharCounters();
         this.prepareTrackContainer(text);
         VoiceSuiteToast.show('読み上げエリアにテキストをコピーしました。', 'success');
+        this.handleSynthStatusMessage({ type: 'info', message: '⬅️ 音声入力から原稿テキストを転送しました。「▶️ 読み上げ開始」で発話できます。' });
       });
     }
 
@@ -1390,6 +1600,7 @@ class VoiceSuite {
         const voiceType = this.ui.voiceSelect ? this.ui.voiceSelect.value : '3';
         if (!text.trim()) {
           VoiceSuiteToast.show('読み上げるテキストを入力してください。', 'warning');
+          this.handleSynthStatusMessage({ type: 'warning', message: '⚠️ 読み上げるテキストを入力してください。' });
           return;
         }
         this.prepareTrackContainer(text);
@@ -1410,6 +1621,7 @@ class VoiceSuite {
     if (this.ui.stopBtn) {
       this.ui.stopBtn.addEventListener('click', () => {
         this.synthModule.stop();
+        this.handleSynthStatusMessage({ type: 'info', message: '⏹️ 読み上げを停止しました。' });
       });
     }
 
@@ -1507,14 +1719,14 @@ class VoiceSuite {
       }
     }
     if (this.ui.recordStatus && !isRecording) {
-      this.ui.recordStatus.classList.remove('active');
+      this.ui.recordStatus.className = 'vs-recording-status';
       this.ui.recordStatus.innerHTML = '<span class="vs-status-dot"></span> 待機中（マイクを押して発話）';
     }
   }
 
   handleInputTick(timeStr) {
     if (this.ui.recordStatus && this.inputModule.isRecording) {
-      this.ui.recordStatus.classList.add('active');
+      this.ui.recordStatus.className = 'vs-recording-status active';
       this.ui.recordStatus.innerHTML = `<span class="vs-status-dot"></span> 録音中 [${timeStr}] ...（赤丸が音圧で伸縮します）`;
     }
   }
@@ -1523,6 +1735,17 @@ class VoiceSuite {
     if (this.ui.inputAiStatus) {
       this.ui.inputAiStatus.className = `vs-input-ai-status ${status.type}`;
       this.ui.inputAiStatus.textContent = status.message;
+    }
+    if (status.type === 'error' && this.ui.recordStatus) {
+      this.ui.recordStatus.className = 'vs-recording-status error';
+      this.ui.recordStatus.innerHTML = `<span class="vs-status-dot"></span> ${status.message.replace(/^[❌⚠️]\s*/, '')}`;
+    }
+  }
+
+  handleSynthStatusMessage(status) {
+    if (this.ui.synthStatusBox) {
+      this.ui.synthStatusBox.className = `vs-synth-status-box ${status.type}`;
+      this.ui.synthStatusBox.textContent = status.message;
     }
   }
 
@@ -1554,9 +1777,9 @@ class VoiceSuite {
     if (!this.ui.ttsStatusBadge) return;
     const isActive = this.synthModule.isPlaying && !this.synthModule.isPaused;
     if (isActive) {
-      this.ui.ttsStatusBadge.classList.add('is-playing');
+      this.ui.ttsStatusBadge.className = 'vs-status-badge is-playing';
     } else {
-      this.ui.ttsStatusBadge.classList.remove('is-playing');
+      this.ui.ttsStatusBadge.className = 'vs-status-badge';
     }
   }
 
@@ -1571,6 +1794,12 @@ class VoiceSuite {
     if (this.ui.ttsStatusText) {
       this.ui.ttsStatusText.textContent = status || '待機中';
     }
-    this.updateTtsBadgeState();
+    if (this.ui.ttsStatusBadge) {
+      if (status && status.includes('未起動')) {
+        this.ui.ttsStatusBadge.className = 'vs-status-badge is-warning';
+      } else {
+        this.updateTtsBadgeState();
+      }
+    }
   }
 }

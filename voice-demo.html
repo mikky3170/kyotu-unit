@@ -1,4 +1,4 @@
-<!-- [稼働Ver 1.0.0 作業版 Rev.29] 独立全画面ガイドオーバーレイ対応・読み上げ広大化レイアウト同期 -->
+<!-- [稼働Ver 1.1.0 作業版 Rev.32] v1.1.0更新・左ペイン下部エラー表示枠完全連動・14話者整合 -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -37,6 +37,23 @@
       border: 1px solid rgba(239, 68, 68, 0.45);
       color: #fca5a5;
     }
+    .vs-engine-radio-group {
+      display: flex;
+      gap: 16px;
+      margin-top: 6px;
+      background: rgba(10, 15, 28, 0.6);
+      padding: 8px 12px;
+      border-radius: var(--vs-radius-md);
+      border: 1px solid var(--vs-border);
+    }
+    .vs-engine-radio-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--vs-text-primary);
+      cursor: pointer;
+    }
   </style>
 </head>
 <body class="vs-app-body">
@@ -46,18 +63,19 @@
     <header class="vs-header">
       <div class="vs-header-left">
         <div>
-          <span class="vs-badge">VoiceSuite Studio v1.0.0</span>
+          <span class="vs-badge">VoiceSuite Studio v1.1.0</span>
           <h1 class="vs-title">共通音声入出力統合モジュール</h1>
-          <p class="vs-subtitle">左広々ワイド読み上げスタジオ（約70%） ＆ 右460px快適AI音声入力・先読み逐次再生・完全汎用文脈読み分け</p>
+          <p class="vs-subtitle">左広々ワイド読み上げスタジオ（VOICEVOX 14話者・ローカル/クラウド切替） ＆ 右快適AI音声入力（段階的AI整形）</p>
         </div>
       </div>
       <div class="vs-header-actions">
+        <a href="voicevox-benchmark.html" target="_blank" class="vs-btn vs-btn-sm" style="text-decoration: none;" title="ローカル vs クラウド音声合成の遅延を比較検証">⏱️ 遅延テスト</a>
         <button id="openGuideBtn" class="vs-btn vs-btn-sm vs-btn-primary" title="システム説明ガイド・操作マニュアルを表示">📖 ガイド</button>
         <button id="openConfigBtn" class="vs-btn-icon" title="API・環境設定">⚙️</button>
       </div>
     </header>
 
-    <!-- メイン2ペインレイアウト（スタジオ画面：左広大 vs-pane-synth / 右固定460px vs-pane-input） -->
+    <!-- メイン2ペインレイアウト（スタジオ画面：左広大 vs-pane-synth / 右固定552px vs-pane-input） -->
     <main id="mainStudioView" class="vs-grid">
 
       <!-- 左ペイン：音声合成 ＆ 原稿表記100%維持・完全汎用多音字文脈読み分け・優雅着地スクロール -->
@@ -67,7 +85,7 @@
             <div class="vs-card-icon">🔊</div>
             <div>
               <h2 class="vs-card-title">音声読み上げ・評価スタジオ</h2>
-              <p class="vs-card-desc">原稿表記100%維持 ＆ スタートバッファリング・自律型多音字文脈判定</p>
+              <p class="vs-card-desc">原稿表記100%維持 ＆ スタートバッファリング・自律型多音字文脈判定（VOICEVOX 14話者）</p>
             </div>
           </div>
         </div>
@@ -154,6 +172,9 @@
           </div>
 
         </div>
+
+        <!-- 【音声読み上げエリア直下】専用ステータス・エラー表示枠（エラー発生時に確実に表示） -->
+        <div id="synthStatusBox" class="vs-synth-status-box"></div>
       </section>
 
       <!-- 右ペイン：音声入力 ＆ 2モード切替 ＆ カーソルインライン追記 ＆ ボタン直下AIステータス -->
@@ -163,7 +184,7 @@
             <div class="vs-card-icon">🎙️</div>
             <div>
               <h2 class="vs-card-title">音声入力・AI自動整形</h2>
-              <p class="vs-card-desc">カーソル位置にインライン追記（前の文章は消えません）。リアルタイム録音タイマー搭載</p>
+              <p class="vs-card-desc">カーソル位置にインライン追記（前の文章は消えません）。8s-16s-30s段階的AI整形</p>
             </div>
           </div>
         </div>
@@ -272,7 +293,7 @@
                   <span>音声入力の革新アプローチ</span>
                 </div>
                 <p style="font-size: 12px; color: #94a3b8; margin: 0;">
-                  従来の音声認識は「息継ぎで前の文章が消える」「改行のない巨大な文章の塊になる」課題がありました。本ツールでは<strong>前の文章を消さずに累積保持</strong>し、カーソル位置への<strong>インライン挿入</strong>とGeminiによる2種類の整形スタイルを提供します。
+                  従来の音声認識は「息継ぎで前の文章が消える」「改行のない巨大な文章の塊になる」課題がありました。本ツールでは<strong>前の文章を消さずに累積保持</strong>し、カーソル位置への<strong>インライン挿入</strong>とGeminiによる8s-16s-30sの段階的リトライ整形を提供します。
                 </p>
               </div>
 
@@ -282,7 +303,7 @@
                   <span>音声読み上げの革新アプローチ</span>
                 </div>
                 <p style="font-size: 12px; color: #94a3b8; margin: 0;">
-                  高品質音声合成の「長文で待たされる」「多音字の誤読が多い」課題を解決。<strong>先読み逐次再生（スタートバッファリング）</strong>により待たずに即時再生を開始。原稿の英字や漢字は100%維持したまま、<strong>5大文法カテゴリー自律判定</strong>で発音のみを完璧に最適化します。
+                  高品質音声合成の「長文で待たされる」「多音字の誤読が多い」課題を解決。<strong>先読み逐次再生（スタートバッファリング）</strong>により待たずに即時再生を開始。PCローカル合成に加え、未起動時も安心な<strong>クラウド合成（tts.quest）</strong>へのシームレス切替を搭載しています。
                 </p>
               </div>
             </div>
@@ -336,9 +357,9 @@
               </thead>
               <tbody>
                 <tr>
-                  <td rowspan="6"><strong>左ペイン<br>読み上げスタジオ<br>(広大 約70%)</strong></td>
+                  <td rowspan="7"><strong>左ペイン<br>読み上げスタジオ<br>(広大ワイド)</strong></td>
                   <td><strong>話者 / 話速スライダー</strong></td>
-                  <td>ずんだもん等のVOICEVOXキャラ10種や標準音声を選択。0.7x〜1.8xの速度調整が可能です。</td>
+                  <td>ずんだもんやもち子さん等のVOICEVOXキャラ14種や標準音声を選択。0.7x〜1.8xの速度調整が可能です。</td>
                 </tr>
                 <tr>
                   <td><strong>読み上げ追従モニター</strong></td>
@@ -346,22 +367,26 @@
                 </tr>
                 <tr>
                   <td><strong>ステータスバッジ</strong></td>
-                  <td>再生中（水色パルス点滅）/ 待機中 / 準備中 の状態をリアルタイム表示します。</td>
+                  <td>再生中（水色パルス点滅）/ 待機中 / 警告（未起動等）の状態をリアルタイム表示します。</td>
                 </tr>
                 <tr>
                   <td><strong>▶️ 読み上げ開始</strong></td>
-                  <td>文脈解析を行い、先読みパイプラインを起動して即座に発声をスタートします。</td>
+                  <td>VOICEVOXの起動を確認し、文脈解析を行って先読みパイプラインで即座に発声をスタートします。</td>
                 </tr>
                 <tr>
                   <td><strong>⏸️ 一時停止 / ▶️ 再開</strong></td>
-                  <td>再生を一時停止します。押すと「▶️ 再開」に変わり、停止したフレーズ位置から追従を再開できます（1行収容）。</td>
+                  <td>再生を一時停止します。押すと「▶️ 再開」に変わり、停止したフレーズ位置から追従を再開できます。</td>
                 </tr>
                 <tr>
                   <td><strong>サンプルの挿入ボタン</strong></td>
                   <td>「📚 青空文庫（ルビ除去・漢字維持）」や「📝 400文字（AI Studio英字表記・セリフ演技）」をワンクリック挿入できます。</td>
                 </tr>
                 <tr>
-                  <td rowspan="4"><strong>右ペイン<br>音声入力エリア<br>(460px固定)</strong></td>
+                  <td><strong>読み上げ専用ステータス枠</strong></td>
+                  <td>読み上げ下部に新設。VOICEVOX未起動やタイムアウト、切替状況が画面内で即座に確認できます。</td>
+                </tr>
+                <tr>
+                  <td rowspan="4"><strong>右ペイン<br>音声入力エリア<br>(552px快適幅)</strong></td>
                   <td><strong>モード選択ボタン</strong></td>
                   <td>停止時のAI整形スタイルを【A】原文忠実 または 【B】AI Studioスマート から切り替えます。</td>
                 </tr>
@@ -374,8 +399,8 @@
                   <td>音声が途切れず累積されます。途中にカーソルを置いて話せば、その位置にピンポイントでインライン挿入されます。</td>
                 </tr>
                 <tr>
-                  <td><strong>⬅️ 読み上げにコピー</strong></td>
-                  <td>整形されたテキストを左ペインの「読み上げ原稿テキスト」へワンクリックで転送します。</td>
+                  <td><strong>ボタン直下ステータス枠</strong></td>
+                  <td>マイク未許可・通信エラー・AI整形リトライ等の状態が目線の近い位置に表示されます。</td>
                 </tr>
               </tbody>
             </table>
@@ -391,7 +416,7 @@
                 <div>
                   <strong style="color: #ffffff; font-size: 13px;">初期設定（初回のみ）</strong>
                   <p style="color: #94a3b8; font-size: 12px; margin: 3px 0 0 0;">
-                    右上の <strong>⚙️ 設定</strong> を開き、<strong>Gemini API Key</strong> を登録します。ローカルVOICEVOXを利用する場合は「🔍 接続テスト」を押して接続成功を確認し、「保存して閉じる」をクリックします。
+                    右上の <strong>⚙️ 設定</strong> を開き、<strong>Gemini API Key</strong> を登録します。合成エンジン（ローカル / クラウド）を選択し、「保存して閉じる」をクリックします。
                   </p>
                 </div>
               </div>
@@ -401,7 +426,7 @@
                 <div>
                   <strong style="color: #ffffff; font-size: 13px;">右ペインで音声を入力する</strong>
                   <p style="color: #94a3b8; font-size: 12px; margin: 3px 0 0 0;">
-                    <strong>【A】原文忠実</strong> または <strong>【B】AI Studioスマート</strong> を選び、<strong>🎙️ マイクボタン</strong> を押して発話します。もう一度押すと停止し、約1〜2秒で綺麗にAI整形されます。言い忘れた言葉はカーソルを置いて追加発話できます。
+                    <strong>【A】原文忠実</strong> または <strong>【B】AI Studioスマート</strong> を選び、<strong>🎙️ マイクボタン</strong> を押して発話します。もう一度押すと停止し、8s-16s-30sの段階的リトライで綺麗にAI整形されます。
                   </p>
                 </div>
               </div>
@@ -411,7 +436,7 @@
                 <div>
                   <strong style="color: #ffffff; font-size: 13px;">左ペインで読み上げ・評価を行う</strong>
                   <p style="color: #94a3b8; font-size: 12px; margin: 3px 0 0 0;">
-                    <strong>「⬅️ 読み上げエリアにコピー」</strong> を押して原稿を転送し、話者と話速を選んで <strong>「▶️ 読み上げ開始」</strong> をクリックします。画面の英字・漢字表記を崩さず、正しい発音でモニターが黄色く発光しながらスムーズに朗読されます。
+                    <strong>「⬅️ 読み上げエリアにコピー」</strong> を押して原稿を転送し、話者と話速を選んで <strong>「▶️ 読み上げ開始」</strong> をクリックします。エラーや進行状況は読み上げエリア下のステータス枠に表示されます。
                   </p>
                 </div>
               </div>
@@ -438,30 +463,54 @@
           <div class="vs-input-hint">gemini-3.5-flash-lite / gemini-flash-lite-latest を呼び出して高精度AI整形と自律型多音字文脈判定を行います。</div>
         </div>
 
+        <!-- 音声合成エンジン選択（ローカル vs クラウド） -->
         <div>
+          <label class="vs-label">VOICEVOX 音声合成エンジン選択</label>
+          <div class="vs-engine-radio-group">
+            <label class="vs-engine-radio-label">
+              <input type="radio" name="cfgTtsMode" id="cfgModeLocal" value="local" checked>
+              <span>🖥️ PCローカル (127.0.0.1:50021)</span>
+            </label>
+            <label class="vs-engine-radio-label">
+              <input type="radio" name="cfgTtsMode" id="cfgModeCloud" value="cloud">
+              <span>☁️ クラウド合成 (api.tts.quest)</span>
+            </label>
+          </div>
+          <div class="vs-input-hint">PCでVOICEVOXアプリを立ち上げ忘れることが多い場合は「クラウド合成」を選択してください。</div>
+        </div>
+
+        <div id="cfgLocalUrlGroup">
           <div style="display: flex; align-items: center; justify-content: space-between;">
-            <label class="vs-label" for="cfgVoicevoxUrl">VOICEVOX 接続先 URL</label>
+            <label class="vs-label" for="cfgVoicevoxUrl">ローカル VOICEVOX 接続先 URL</label>
             <button id="btnTestVoicevox" class="vs-btn vs-btn-sm" style="padding: 2px 8px;">🔍 接続テスト</button>
           </div>
           <input type="text" id="cfgVoicevoxUrl" class="vs-input" placeholder="http://127.0.0.1:50021" style="margin-top: 4px;">
           <div id="diagResultBox" class="vs-diag-result"></div>
-          <div class="vs-input-hint">Windowsやブラウザ環境での安定通信のため、http://127.0.0.1:50021 を推奨します。</div>
+          <div class="vs-input-hint">PCローカル環境では http://127.0.0.1:50021 を指定します。</div>
         </div>
 
         <div>
-          <label class="vs-label" for="cfgVoicevoxApiKey">VOICEVOX API Key（外部認証サーバー利用時）</label>
+          <label class="vs-label" for="cfgVoicevoxApiKey">VOICEVOX API Key（クラウド利用時 / 外部認証時）</label>
           <input type="password" id="cfgVoicevoxApiKey" class="vs-input" placeholder="不要な場合は空欄のままにしてください">
-          <div class="vs-input-hint">ローカル版の標準VOICEVOXでは空欄で動作します。認証付きプロキシやAPI連携時に設定してください。</div>
+          <div class="vs-input-hint">クラウド合成 (api.tts.quest) の個別キーや外部サーバーのAPIキーを設定できます（空欄でも利用可能）。</div>
         </div>
 
         <div>
           <label class="vs-label" for="cfgVoicevoxTimeout">VOICEVOX タイムアウト（ミリ秒）</label>
-          <input type="number" id="cfgVoicevoxTimeout" class="vs-input" placeholder="10000" value="10000">
+          <input type="number" id="cfgVoicevoxTimeout" class="vs-input" placeholder="25000" value="25000">
+          <div class="vs-input-hint">長文の音声生成でタイムアウトする場合は 30000（30秒）などに設定してください（最低10秒保証）。</div>
         </div>
 
-        <!-- 単語読み替えカスタム辞書セクション -->
+        <!-- 単語読み替えカスタム辞書セクション（JSONバックアップ＆読込対応） -->
         <div>
-          <label class="vs-label">単語読み替えカスタム辞書</label>
+          <div class="vs-dict-actions-bar">
+            <label class="vs-label" style="margin: 0;">単語読み替えカスタム辞書</label>
+            <div style="display: flex; gap: 6px;">
+              <button id="exportDictBtn" class="vs-btn vs-btn-sm" title="登録した単語辞書をJSONファイルとして保存">📥 辞書保存 (JSON)</button>
+              <button id="importDictBtn" class="vs-btn vs-btn-sm" title="バックアップした辞書JSONファイルを読み込んで統合">📤 辞書読込</button>
+              <input type="file" id="importDictFileInput" accept=".json" style="display: none;">
+            </div>
+          </div>
           <div class="vs-dict-box">
             <div style="display: flex; gap: 8px;">
               <input type="text" id="dictWordInput" class="vs-input" placeholder="表記 (例: 固有名詞)" style="flex: 1;">
@@ -470,7 +519,7 @@
             </div>
             <div id="dictList" class="vs-dict-list"></div>
           </div>
-          <div class="vs-input-hint">独自の専門用語や固有名詞を登録できます。一般的な日本語や多音字はAIが文脈から自動判別します。</div>
+          <div class="vs-input-hint">独自の専門用語を登録できます。JSON形式で保存して他の環境へ簡単に移行・共有できます。</div>
         </div>
 
       </div>
@@ -508,6 +557,7 @@
         inputCharCounter: document.getElementById('inputCharCounter'),
         inputAiStatus: document.getElementById('inputAiStatus'),
         synthTextArea: document.getElementById('synthTextArea'),
+        synthStatusBox: document.getElementById('synthStatusBox'),
         readTrackContainer: document.getElementById('readTrackContainer'),
         voiceSelect: document.getElementById('voiceSelect'),
         speedSlider: document.getElementById('speedSlider'),
@@ -531,12 +581,12 @@
       if (openGuideBtn && backToStudioBtn && guideView) {
         openGuideBtn.addEventListener('click', () => {
           guideView.hidden = false;
-          document.body.style.overflow = 'hidden'; // 背景スクロールのロック
+          document.body.style.overflow = 'hidden';
         });
 
         backToStudioBtn.addEventListener('click', () => {
           guideView.hidden = true;
-          document.body.style.overflow = ''; // 背景スクロールの解除
+          document.body.style.overflow = '';
         });
       }
 
@@ -562,6 +612,7 @@
           document.getElementById('synthTextArea').value = '';
           voiceSuite.updateCharCounters();
           voiceSuite.prepareTrackContainer('');
+          voiceSuite.handleSynthStatusMessage({ type: 'info', message: '読み上げテキストをクリアしました。' });
         });
       }
 
@@ -573,6 +624,7 @@
           voiceSuite.updateCharCounters();
           voiceSuite.prepareTrackContainer(SAMPLE_400_CHARS);
           VoiceSuiteToast.show('400文字のサンプル文章を挿入しました（AI Studio英字表記・セリフ自然演技対応）。', 'info');
+          voiceSuite.handleSynthStatusMessage({ type: 'info', message: '📝 400文字サンプル文章を挿入しました。「▶️ 読み上げ開始」で評価できます。' });
         });
       }
 
@@ -584,6 +636,7 @@
           voiceSuite.updateCharCounters();
           voiceSuite.prepareTrackContainer(SAMPLE_AOZORA_RUBY);
           VoiceSuiteToast.show('青空文庫の文章を挿入しました（ルビを削除し漢字を維持して文字数ウェイト完全同期で朗読します）。', 'info', 4500);
+          voiceSuite.handleSynthStatusMessage({ type: 'info', message: '📚 青空文庫サンプルを挿入しました（ルビ自動除去・多音字文脈判定対応）。' });
         });
       }
 
@@ -597,6 +650,8 @@
       const diagResultBox = document.getElementById('diagResultBox');
 
       const cfgGeminiKey = document.getElementById('cfgGeminiKey');
+      const cfgModeLocal = document.getElementById('cfgModeLocal');
+      const cfgModeCloud = document.getElementById('cfgModeCloud');
       const cfgVoicevoxUrl = document.getElementById('cfgVoicevoxUrl');
       const cfgVoicevoxApiKey = document.getElementById('cfgVoicevoxApiKey');
       const cfgVoicevoxTimeout = document.getElementById('cfgVoicevoxTimeout');
@@ -605,6 +660,9 @@
       const dictYomiInput = document.getElementById('dictYomiInput');
       const addDictBtn = document.getElementById('addDictBtn');
       const dictList = document.getElementById('dictList');
+      const exportDictBtn = document.getElementById('exportDictBtn');
+      const importDictBtn = document.getElementById('importDictBtn');
+      const importDictFileInput = document.getElementById('importDictFileInput');
 
       let workingCustomDict = {};
 
@@ -656,11 +714,64 @@
         renderDictList();
       });
 
+      // 辞書のバックアップ（JSONエクスポート）
+      if (exportDictBtn) {
+        exportDictBtn.addEventListener('click', () => {
+          const jsonStr = JSON.stringify(workingCustomDict, null, 2);
+          const blob = new Blob([jsonStr], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `voicesuite_custom_dict_${new Date().toISOString().slice(0, 10)}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          VoiceSuiteToast.show('カスタム辞書をJSONファイルとしてダウンロードしました。', 'success');
+        });
+      }
+
+      // 辞書の読み込み（JSONインポート ＆ マージ）
+      if (importDictBtn && importDictFileInput) {
+        importDictBtn.addEventListener('click', () => {
+          importDictFileInput.value = '';
+          importDictFileInput.click();
+        });
+
+        importDictFileInput.addEventListener('change', (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            try {
+              const res = voiceSuite.config.importCustomDictJson(event.target.result);
+              if (res.success) {
+                workingCustomDict = { ...(voiceSuite.config.get('customDict') || {}) };
+                renderDictList();
+                VoiceSuiteToast.show(`辞書をインポートしました（読み込み: ${res.count}件 / 合計: ${res.total}件）`, 'success');
+              } else {
+                VoiceSuiteToast.show(`辞書インポート失敗: ${res.message}`, 'error');
+              }
+            } catch (err) {
+              VoiceSuiteToast.show(`辞書ファイルの解析エラー: ${err.message}`, 'error');
+            }
+          };
+          reader.readAsText(file);
+        });
+      }
+
       const loadConfigToInputs = () => {
         cfgGeminiKey.value = voiceSuite.config.get('geminiApiKey') || '';
+        const mode = voiceSuite.config.get('ttsMode') || 'local';
+        if (mode === 'cloud') {
+          cfgModeCloud.checked = true;
+        } else {
+          cfgModeLocal.checked = true;
+        }
         cfgVoicevoxUrl.value = voiceSuite.config.get('voicevoxUrl') || 'http://127.0.0.1:50021';
         cfgVoicevoxApiKey.value = voiceSuite.config.get('voicevoxApiKey') || '';
-        cfgVoicevoxTimeout.value = voiceSuite.config.get('voicevoxTimeout') || 10000;
+        cfgVoicevoxTimeout.value = voiceSuite.config.get('voicevoxTimeout') || 25000;
         workingCustomDict = { ...(voiceSuite.config.get('customDict') || {}) };
         renderDictList();
         
@@ -682,23 +793,27 @@
       cancelConfigBtn.addEventListener('click', closeModal);
 
       saveConfigBtn.addEventListener('click', () => {
+        const selectedMode = cfgModeCloud.checked ? 'cloud' : 'local';
         voiceSuite.config.save({
           geminiApiKey: cfgGeminiKey.value.trim(),
+          ttsMode: selectedMode,
           voicevoxUrl: cfgVoicevoxUrl.value.trim(),
           voicevoxApiKey: cfgVoicevoxApiKey.value.trim(),
-          voicevoxTimeout: parseInt(cfgVoicevoxTimeout.value, 10) || 10000,
+          voicevoxTimeout: Math.max(10000, parseInt(cfgVoicevoxTimeout.value, 10) || 25000),
           customDict: workingCustomDict
         });
         closeModal();
         voiceSuite.checkInitialApiKeys();
+        const modeDesc = selectedMode === 'cloud' ? 'クラウド合成 (api.tts.quest)' : 'PCローカル (127.0.0.1:50021)';
+        voiceSuite.handleSynthStatusMessage({ type: 'info', message: `⚙️ 音声設定を保存しました（現在の合成モード: ${modeDesc}）` });
         VoiceSuiteToast.show('設定を保存しました。', 'success');
       });
 
       btnTestVoicevox.addEventListener('click', async () => {
-        const testUrl = cfgVoicevoxUrl.value.trim();
-        const testApiKey = cfgVoicevoxApiKey.value.trim();
-        voiceSuite.config.data.voicevoxUrl = testUrl;
-        voiceSuite.config.data.voicevoxApiKey = testApiKey;
+        const selectedMode = cfgModeCloud.checked ? 'cloud' : 'local';
+        voiceSuite.config.data.ttsMode = selectedMode;
+        voiceSuite.config.data.voicevoxUrl = cfgVoicevoxUrl.value.trim();
+        voiceSuite.config.data.voicevoxApiKey = cfgVoicevoxApiKey.value.trim();
 
         btnTestVoicevox.textContent = '診断中...';
         btnTestVoicevox.disabled = true;
@@ -717,7 +832,11 @@
           diagResultBox.appendChild(document.createTextNode(`❌ ${res.message}`));
           diagResultBox.appendChild(document.createElement('br'));
           const hintSmall = document.createElement('small');
-          hintSmall.textContent = '※URLが「http://127.0.0.1:50021」になっていること、必要な場合はAPIキーが正しいことをご確認ください。';
+          if (selectedMode === 'local') {
+            hintSmall.textContent = '※ローカルVOICEVOXアプリが起動しているか、URLが「http://127.0.0.1:50021」になっていることをご確認ください。';
+          } else {
+            hintSmall.textContent = '※インターネット接続、またはクラウドAPIキーが正しいことをご確認ください。';
+          }
           diagResultBox.appendChild(hintSmall);
         }
       });
